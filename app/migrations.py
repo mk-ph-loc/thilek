@@ -17,7 +17,11 @@ CREATE TABLE IF NOT EXISTS fileops(id INTEGER PRIMARY KEY, ts TEXT, op TEXT, pat
 CREATE TABLE IF NOT EXISTS setting(k TEXT PRIMARY KEY, v TEXT);
 """)
 
-MIGRATIONS = [(1, _v1), (2, _v2)]
+def _v3(c):
+    """0.21.0: συνταγές του wizard εξαγωγών (δεδομένα χρήστη, διατηρούνται στο rebuild)."""
+    c.execute("CREATE TABLE IF NOT EXISTS wizard_recipe(id INTEGER PRIMARY KEY, name TEXT NOT NULL, state TEXT NOT NULL DEFAULT '{}', created TEXT, updated TEXT)")
+
+MIGRATIONS = [(1, _v1), (2, _v2), (3, _v3)]
 LATEST = MIGRATIONS[-1][0]
 
 def tables(c): return {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}

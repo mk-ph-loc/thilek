@@ -11,10 +11,11 @@ DRIVE_URL = 'https://drive.google.com/drive/folders/1o8IbCBlgcnncuotnccop6HO717s
 TIP_KINDS = (('hdr', 'Σύνδεσμοι του μενού'), ('btn', 'Κουμπιά'), ('danger', 'Κουμπιά κινδύνου (διαγραφή, κάδος)'), ('sel', 'Τσεκ επιλογής γραμμών πινάκων'),
              ('opt', 'Ρυθμίσεις ναι/όχι και επιλογές (checkbox, radio)'), ('list', 'Λίστες επιλογής'), ('txt', 'Πεδία κειμένου'), ('file', 'Επιλογή αρχείου'), ('sum', 'Πτυσσόμενα (summary)'))
 START_PAGES = (('/review', 'Θέματα'), ('/search', 'Αναζήτηση'), ('/browse', 'Ερωτήματα'), ('/coverage', 'Ύλη/σελίδα'), ('/tags', 'Ετικέτες'), ('/saved', 'Αποθηκευμένα'),
-               ('/exams', 'Διαγωνίσματα'), ('/quizzes', 'Quiz'), ('/lyseis', 'Λύσεις'), ('/docs', 'Έγγραφα MD'), ('/fb', 'Αρχεία'), ('/sync', 'Συγχρονισμός Drive και εντολές'),
+               ('/exams', 'Διαγωνίσματα'), ('/quizzes', 'Quiz'), ('/wizard', 'Wizard εξαγωγών'), ('/lyseis', 'Λύσεις'), ('/docs', 'Έγγραφα MD'), ('/fb', 'Αρχεία'), ('/sync', 'Συγχρονισμός Drive και εντολές'),
                ('/manual', 'Οδηγίες'), ('/settings', 'Ρυθμίσεις'))
 DEFAULTS = {'diagram_mode': 'svg', 'help_default': 'open', 'help_show': 'on', 'help_mode': 'remember', 'start_page': '/review',
             'drive_url': DRIVE_URL, 'rclone_remote': 'gdrive:TH-ILEK'}
+DEFAULTS['wiz_criteria'] = 'q,qtype,chapter,image,position,fav,yli,section,tag,lsol,upto'
 DEFAULTS.update({'tip_' + k: 'on' for k, _ in TIP_KINDS})
 CHOICES = {'diagram_mode': ('svg', 'local'), 'help_default': ('open', 'closed'), 'help_show': ('on', 'off'), 'help_mode': ('remember', 'open', 'closed'),
            'start_page': tuple(u for u, _ in START_PAGES)}
@@ -25,6 +26,10 @@ RE_REMOTE = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]*:[^\x00-\x1f"\']{0,200}$')
 def valid(k, v):
     """Έγκυρη τιμή για το κλειδί; (κείμενα: drive_url πρέπει να είναι σύνδεσμος Google Drive, rclone_remote της μορφής όνομα:διαδρομή.)"""
     if k in CHOICES: return v in CHOICES[k]
+    if k == 'wiz_criteria':
+        from .wizmodel import CRITERIA_KEYS
+        xs = [x for x in v.split(',') if x]
+        return bool(xs) and all(x in CRITERIA_KEYS for x in xs)
     if k == 'drive_url': return bool(re.match(r'^https://(drive|docs)\.google\.com/[^\s<>"\']{3,400}$', v))
     if k == 'rclone_remote': return bool(RE_REMOTE.match(v))
     return False
@@ -53,6 +58,9 @@ def settings_page(saved: int = 0):
     def radios(k, opts):
         return ''.join(f"<label class='f chk'><input type=radio class=r-opt name={k} value={v} {'checked' if s[k] == v else ''}>{E(lab)}</label>" for v, lab in opts)
     tips = ''.join(f"<label class='f chk'><input type=checkbox class=r-opt name=tip_{k} {'checked' if s['tip_' + k] == 'on' else ''}>{E(lab)}</label>" for k, lab in TIP_KINDS)
+    from .wizmodel import CRITERIA
+    on = s['wiz_criteria'].split(',')
+    wcs = ''.join(f"<label class='f chk'><input type=checkbox class=r-opt name=wc_{k} {'checked' if k in on else ''}>{E(lab)}</label>" for k, lab in CRITERIA)
     start = ''.join(f"<option value='{E(u)}' {'selected' if s['start_page'] == u else ''}>{E(lab)} ({E(u)})</option>" for u, lab in START_PAGES)
     body = f"""<h2>Ρυθμίσεις</h2>{ok}
 <form method=post action=/settings>
@@ -61,6 +69,8 @@ def settings_page(saved: int = 0):
 <p>Η διεύθυνση <code>/</code> (όταν ανοίγεις μόνο το όνομα του server) οδηγεί σε:</p>
 <label class=f>Αρχική σελίδα <select name=start_page class=r-list>{start}</select></label>
 <p><small>Οι σύνδεσμοι του μενού και οι υπόλοιπες σελίδες δεν αλλάζουν.</small></p></fieldset>
+<fieldset><legend>Κριτήρια επιλογής στον wizard εξαγωγών</legend><input type=hidden name=wc_present value=1>
+<p>Ποια κριτήρια φαίνονται στο βήμα «Επιλογή» του <a href='/wizard'>wizard</a>:</p>{wcs}</fieldset>
 <fieldset><legend>Tooltip στο hover, ανά είδος εργαλείου</legend>
 <p>Τσεκαρισμένο = εμφανίζεται μικρό κείμενο βοήθειας όταν περνάς το ποντίκι πάνω από αυτό το είδος.</p>{tips}
 <p><small>Ισχύει και στο πληκτρολόγιο (focus). Οι αλλαγές εφαρμόζονται στην επόμενη φόρτωση σελίδας.</small></p></fieldset>
@@ -92,6 +102,10 @@ async def settings_save(request: Request):
         if k.startswith('tip_'): continue
         v = f.get(k)
         if isinstance(v, str) and valid(k, v.strip()): vals[k] = v.strip()
+    if f.get('wc_present'):
+        from .wizmodel import CRITERIA_KEYS
+        sel = [k for k in CRITERIA_KEYS if f.get('wc_' + k)]
+        if sel: vals['wiz_criteria'] = ','.join(sel)
     if f.get('tips_present'):
         for k, _ in TIP_KINDS: vals['tip_' + k] = 'on' if f.get('tip_' + k) else 'off'
     c = db()
