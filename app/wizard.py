@@ -3,7 +3,7 @@
 import datetime, json, pathlib, re
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from . import config, settings, wizmodel as M, wizexam
+from . import config, settings, wizmodel as M, wizexam, wizquiz
 from .main_auth import auth
 from .review import db, page, html, same_origin, fld, chk, TYPE_OPTS
 from .library import select_questions, filters_of, chapter_opts, lsol_opts
@@ -196,9 +196,12 @@ def page5(rid, name, st):
     exam = (f"<fieldset><legend>Διαγώνισμα/τεστ Word</legend>{fld('Πρότυπο', f'<select class=r-list name=x_tpl>{tpls}</select>')} <a class=btn href='/wizard-templates'>Πρότυπα σχολείου και οδηγός</a>"
             f"{tx('x_school', 'Σχολείο', 34)}{tx('x_course', 'Μάθημα')}{tx('x_class', 'Τάξη/τμήμα', 12)}{tx('x_date', 'Ημερομηνία', 12)}{tx('x_dur', 'Διάρκεια', 10)}{tx('x_sub', 'Υπότιτλος', 30)}{tx('x_notes', 'Οδηγίες', 60)}"
             f"{fld('Ομαδοποίηση', f'<select class=r-list name=x_grp>{xg}</select>')}{fld('Ερωτήματα ως', f'<select class=r-list name=x_mode>{xm}</select>')}{fld('Έκδοση', f'<select class=r-list name=x_ver>{xv}</select>')}</fieldset>")
+    mc_ = ''.join(opt(k, E(t), st['m_cat']) for k, t in wizquiz.M_CATS); gn = ''.join(opt(k, E(t), st['g_name']) for k, t in wizquiz.G_NAMES); gi = ''.join(opt(k, E(t), st['g_img']) for k, t in wizquiz.G_IMGS)
+    quiz = (f"<fieldset><legend>Quiz: Moodle, Google Form, H5P (από τα μπλοκ quiz των λύσεων)</legend>{fld('Moodle: κατηγορίες', f'<select class=r-list name=m_cat>{mc_}</select>')}{ck('m_tags', st['m_tags'], 'Moodle: ετικέτες (θέμα, ερώτημα, τύπος, ετικέτες της λύσης)')}"
+            f"{fld('Google Form: όνομα', f'<select class=r-list name=g_name>{gn}</select>')}{fld('Google Form: τύποι/εικόνες', f'<select class=r-list name=g_img>{gi}</select>')}</fieldset>")
     prefix = fld('Πρόθεμα συνδέσμων αρχείων', f"<input class=r-txt name=link_prefix size=14 value='{E(st['link_prefix'])}'>")
     inner = (f"<h3>5. Περιεχόμενο και επιλογές <small>(μορφή: {E(dict(M.FORMATS)[st['format']])})</small></h3>" + fld('Τίτλος', f"<input class=r-txt name=title size=40 value='{E(st['title'])}'>")
-             + exam + f"<fieldset><legend>Excel</legend>{prefix}{ck('bundle', st['bundle'], 'Επισύναψη των PDF και των λύσεων στο zip (στις θέσεις των συνδέσμων)')}</fieldset>"
+             + exam + quiz + f"<fieldset><legend>Excel</legend>{prefix}{ck('bundle', st['bundle'], 'Επισύναψη των PDF και των λύσεων στο zip (στις θέσεις των συνδέσμων)')}</fieldset>"
              + f"<fieldset><legend>Markdown / Word</legend>{fld('Εικόνες ή κείμενο', f'<select class=r-list name=mdmode>{mdm}</select>')}{fld('Αρίθμηση', f'<select class=r-list name=numbering>{num}</select>')}</fieldset>"
              + f"<fieldset><legend>Λύσεις εκπαιδευτικού (Reveal, HTML μαθητή, Moodle)</legend>{fld('Στυλ', f'<select class=r-list name=style>{sty}</select>')}<p>Ενότητες που περιλαμβάνονται:</p>{units}{ck('hide', st['hide'], 'Κρυφές λύσεις με κλικ (HTML μαθητή)')}</fieldset>"
              + f"<fieldset><legend>Αποθήκευση και προεπισκόπηση</legend>{ck('preview', st['preview'], 'Προεπισκόπηση πριν την εξαγωγή (όπου γίνεται)')}{fld('Πού', f'<select class=r-list name=store>{store}</select>')}</fieldset>" + nav(rid, 5))
@@ -227,8 +230,18 @@ def produce(c, st, es, preview=False):
         files, model = wizsite.build_site(c, st, es)
         if not files: raise HTTPException(422, 'Κανένα από τα ερωτήματα δεν έχει αρχείο λύσης (.md). Δες τη σελίδα «Λύσεις».')
         return ('site', files, model)
-    if fm in ('reveal', 'student', 'moodle'):
-        r = solexport.export(c, {'reveal': 'reveal', 'student': 'html', 'moodle': 'moodle'}[fm], members_of(es), st['sx'], title, st['style'], bool(st['hide'])); return ('response', r)
+    if fm == 'moodle':
+        from . import wizquiz
+        r = wizquiz.moodle(c, st, es)
+        if not r: raise HTTPException(422, 'Κανένα από τα ερωτήματα δεν έχει έγκυρα στοιχεία quiz στη λύση εκπαιδευτικού. Δες τη σελίδα «Λύσεις».')
+        return ('file',) + r
+    if fm in ('gform', 'h5p'):
+        from . import wizquiz
+        r = (wizquiz.gform if fm == 'gform' else wizquiz.h5p)(c, st, es)
+        if not r: raise HTTPException(422, 'Κανένα από τα ερωτήματα δεν έχει έγκυρα στοιχεία quiz στη λύση εκπαιδευτικού. Δες τη σελίδα «Λύσεις».')
+        return ('file', r[0], r[1], 'application/zip')
+    if fm in ('reveal', 'student'):
+        r = solexport.export(c, {'reveal': 'reveal', 'student': 'html'}[fm], members_of(es), st['sx'], title, st['style'], bool(st['hide'])); return ('response', r)
     if fm == 'exam':
         from . import wizexam
         try: data, fname, mime = wizexam.build(c, st, es)
@@ -398,6 +411,10 @@ async def wizard_post(request: Request, rid: int, step: int):
             if fv(f, 'mdmode') in ('image', 'text', 'both'): st['mdmode'] = fv(f, 'mdmode')
             if fv(f, 'numbering') in ('new', 'source'): st['numbering'] = fv(f, 'numbering')
             if fv(f, 'style') in STYLES: st['style'] = fv(f, 'style')
+            if fv(f, 'm_cat') in ('single', 'item', 'qtype'): st['m_cat'] = fv(f, 'm_cat')
+            st['m_tags'] = bool(f.get('m_tags'))
+            if fv(f, 'g_name') in ('required', 'optional', 'none'): st['g_name'] = fv(f, 'g_name')
+            if fv(f, 'g_img') in ('default', 'text', 'images'): st['g_img'] = fv(f, 'g_img')
             for k in ('x_school', 'x_class', 'x_date', 'x_dur', 'x_sub', 'x_notes', 'x_course'): st[k] = fv(f, k)[:300]
             if fv(f, 'x_grp') in ('item', 'qtype', 'none'): st['x_grp'] = fv(f, 'x_grp')
             if fv(f, 'x_mode') in ('image', 'text', 'both'): st['x_mode'] = fv(f, 'x_mode')

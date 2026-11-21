@@ -106,7 +106,7 @@ erDiagram
 
     **`trash`** — `id`, `orig_rel`, `trash_rel`, `kind`, `size`, `deleted`, `reason`. **`fileops`** — `id`, `ts`, `op`, `path`, `detail`. Γράφονται από τον file browser και τη διαγραφή εγγράφων.
 
-    **`setting`** — `k`, `v`. Γράφεται από το `/settings` (`diagram_mode`, `help_default`, `help_show`, `help_mode`, `start_page`, `tip_*`, `wiz_criteria`, `drive_url`, `rclone_remote`).
+    **`setting`** — `k`, `v`. Γράφεται από το `/settings` (`diagram_mode`, `help_default`, `help_show`, `help_mode`, `start_page`, `tip_*`, `wiz_criteria`, `gform_images`, `drive_url`, `rclone_remote`).
 
     **`wizard_recipe`** — `id`, `name`, `state` (JSON με όλη την κατάσταση των βημάτων του wizard), `created`, `updated`. Γράφεται από το `/wizard`· **επιβιώνει του rebuild**.
 

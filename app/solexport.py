@@ -139,10 +139,12 @@ def xtext(s): return E(s or '', quote=False)
 def cloze_esc(s): return re.sub(r'([}#~/"\\])', r'\\\1', s)
 def num(v): return f'{v:g}' if isinstance(v, (int, float)) else str(v)
 
-def moodle_xml(rows, title, root=''):
-    """-> (xml, παραλείψεις [κείμενο]). Κάθε στοιχείο quiz χωρίς σφάλμα γίνεται μία ερώτηση."""
+def moodle_xml(rows, title, root='', cat='single', tags=False):
+    """-> (xml, παραλείψεις [κείμενο], πλήθος). Κάθε στοιχείο quiz χωρίς σφάλμα γίνεται μία ερώτηση.
+    cat: 'single' (μία κατηγορία = τίτλος) | 'item' (υποκατηγορία «Θέμα <ID>») | 'qtype' (υποκατηγορία ανά τύπο στοιχείου). tags: ετικέτες Moodle (θέμα, ερώτημα, τύπος, ετικέτες της λύσης)."""
+    base_cat = (title or 'TH-ILEK').replace('/', '-'); blocks = []
     out = ['<?xml version="1.0" encoding="UTF-8"?>', '<quiz>', '<!-- TH-ILEK: εξαγωγή από τα quiz blocks των λύσεων εκπαιδευτικού. ΔΕΝ έχει δοκιμαστεί σε πραγματικό Moodle. -->',
-           f'<question type="category"><category><text>{xtext("$course$/top/" + (title or "TH-ILEK").replace("/", "-"))}</text></category></question>']
+           ]
     skipped, notes, n = [], [], 0
     for r in rows:
         for q in r['quiz']:
@@ -182,7 +184,24 @@ def moodle_xml(rows, title, root=''):
             elif t == 'matching':
                 x.append('<shuffleanswers>true</shuffleanswers>')
                 x += [f'<subquestion format="html"><text>{cdata(moodle_text(a))}</text><answer><text>{cdata(moodle_text(b))}</text></answer></subquestion>' for a, b in q['pairs']]
-            x.append('</question>'); out.append('\n'.join(x)); n += 1
+            if tags:
+                tg = [f"θέμα-{r['item_id']}", f"ερώτημα-{r['qcode']}", t] + [str(z) for z in (r.get('fm') or {}).get('tags') or []]
+                seen_t = []
+                for z in tg:
+                    z = z.replace(',', ' ').strip()
+                    if z and z not in seen_t: seen_t.append(z)
+                x.append('<tags>' + ''.join(f'<tag><text>{xtext(z)}</text></tag>' for z in seen_t) + '</tags>')
+            x.append('</question>')
+            ck = '' if cat == 'single' else (f"Θέμα {r['item_id']}" if cat == 'item' else {'true_false': 'Σωστό-Λάθος', 'mcq': 'Πολλαπλής επιλογής', 'short': 'Σύντομη απάντηση', 'numeric': 'Αριθμητική', 'fill': 'Συμπλήρωση', 'matching': 'Αντιστοίχιση'}[t])
+            blocks.append((ck, '\n'.join(x))); n += 1
+    if cat == 'qtype': blocks.sort(key=lambda b: b[0])                   # ταξινόμηση ανά τύπο (σταθερή)
+    last = None
+    for ck, xml in blocks:
+        if last is None or ck != last:
+            path = '$course$/top/' + base_cat + (('/' + ck.replace('/', '-')) if ck else '')
+            out.append(f'<question type="category"><category><text>{xtext(path)}</text></category></question>'); last = ck
+        out.append(xml)
+    if not blocks: out.append(f'<question type="category"><category><text>{xtext("$course$/top/" + base_cat)}</text></category></question>')
     for s in skipped: out.append('<!-- παραλείφθηκε: ' + s.replace('--', '- -') + ' -->')
     for s in notes: out.append('<!-- σημείωση: ' + s.replace('--', '- -') + ' -->')
     out.append('</quiz>')
