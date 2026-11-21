@@ -201,7 +201,7 @@ def page5(rid, name, st):
             f"{fld('Google Form: όνομα', f'<select class=r-list name=g_name>{gn}</select>')}{fld('Google Form: τύποι/εικόνες', f'<select class=r-list name=g_img>{gi}</select>')}</fieldset>")
     prefix = fld('Πρόθεμα συνδέσμων αρχείων', f"<input class=r-txt name=link_prefix size=14 value='{E(st['link_prefix'])}'>")
     inner = (f"<h3>5. Περιεχόμενο και επιλογές <small>(μορφή: {E(dict(M.FORMATS)[st['format']])})</small></h3>" + fld('Τίτλος', f"<input class=r-txt name=title size=40 value='{E(st['title'])}'>")
-             + exam + quiz + f"<fieldset><legend>Excel</legend>{prefix}{ck('bundle', st['bundle'], 'Επισύναψη των PDF και των λύσεων στο zip (στις θέσεις των συνδέσμων)')}</fieldset>"
+             + f"<fieldset><legend>Σύγκριση με το ΙΕΠ</legend>{ck('cmp', st['cmp'], 'Έλεγχος των απαντήσεών μου με τη λύση ΙΕΠ: προειδοποιήσεις στο βήμα 6 και φύλλο «Σύγκριση ΙΕΠ» στο Excel')} <a class=btn href='/compare'>Σελίδα σύγκρισης</a></fieldset>" + exam + quiz + f"<fieldset><legend>Excel</legend>{prefix}{ck('bundle', st['bundle'], 'Επισύναψη των PDF και των λύσεων στο zip (στις θέσεις των συνδέσμων)')}</fieldset>"
              + f"<fieldset><legend>Markdown / Word</legend>{fld('Εικόνες ή κείμενο', f'<select class=r-list name=mdmode>{mdm}</select>')}{fld('Αρίθμηση', f'<select class=r-list name=numbering>{num}</select>')}</fieldset>"
              + f"<fieldset><legend>Λύσεις εκπαιδευτικού (Reveal, HTML μαθητή, Moodle)</legend>{fld('Στυλ', f'<select class=r-list name=style>{sty}</select>')}<p>Ενότητες που περιλαμβάνονται:</p>{units}{ck('hide', st['hide'], 'Κρυφές λύσεις με κλικ (HTML μαθητή)')}</fieldset>"
              + f"<fieldset><legend>Αποθήκευση και προεπισκόπηση</legend>{ck('preview', st['preview'], 'Προεπισκόπηση πριν την εξαγωγή (όπου γίνεται)')}{fld('Πού', f'<select class=r-list name=store>{store}</select>')}</fieldset>" + nav(rid, 5))
@@ -265,6 +265,9 @@ def slug(s): return re.sub(r'[^\w-]+', '_', s, flags=re.U).strip('_')[:50] or 'a
 
 def page6(c, rid, name, st):
     es = M.entries(c, st); t = M.total(es); warns = M.checks(es, st); fm = st['format']
+    if st['cmp']:
+        from . import iepcmp
+        warns += iepcmp.warnings(iepcmp.for_entries(c, es))
     rows = ''.join(f"<tr><td>{E(e['item'])}</td><td>{E(e['code'])}</td><td>{M.fmt_pts(e['pts'])}</td><td>{E(e['row']['qtype'] or '')}</td><td>{'✎' if e['row']['has_sol'] else ''}</td><td>{VIS[e['vis']]}</td></tr>" for e in es)
     wb = ''.join(f"<li>{E(w)}</li>" for w in warns)
     prev = ''
@@ -412,7 +415,7 @@ async def wizard_post(request: Request, rid: int, step: int):
             if fv(f, 'numbering') in ('new', 'source'): st['numbering'] = fv(f, 'numbering')
             if fv(f, 'style') in STYLES: st['style'] = fv(f, 'style')
             if fv(f, 'm_cat') in ('single', 'item', 'qtype'): st['m_cat'] = fv(f, 'm_cat')
-            st['m_tags'] = bool(f.get('m_tags'))
+            st['m_tags'] = bool(f.get('m_tags')); st['cmp'] = bool(f.get('cmp'))
             if fv(f, 'g_name') in ('required', 'optional', 'none'): st['g_name'] = fv(f, 'g_name')
             if fv(f, 'g_img') in ('default', 'text', 'images'): st['g_img'] = fv(f, 'g_img')
             for k in ('x_school', 'x_class', 'x_date', 'x_dur', 'x_sub', 'x_notes', 'x_course'): st[k] = fv(f, k)[:300]

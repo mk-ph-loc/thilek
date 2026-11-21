@@ -11,7 +11,7 @@
 |---|---|---|
 | {{ok:Τράπεζα}} | `course`, `book`, `section`, `item`, `question`, `question_section(origin=iep/auto)`, `yli_year` | **ξαναχτίζονται** από τα αρχεία |
 | {{info:Ευρετήρια}} | `qsolution`, `book_page`, `book_fts`, `q_fts` | **ξαναχτίζονται** (αντίγραφα αρχείων) |
-| {{warn:Δεδομένα χρήστη}} | `exam`, `exam_question`, `question_tag`, `question_fav`, `collection`, `collection_member`, `quiz`, `quiz_item`, `mdoc`, `toolbox`, `trash`, `fileops`, `setting`, `wizard_recipe` | **αντιγράφονται** όπως είναι |
+| {{warn:Δεδομένα χρήστη}} | `exam`, `exam_question`, `question_tag`, `question_fav`, `collection`, `collection_member`, `quiz`, `quiz_item`, `mdoc`, `toolbox`, `trash`, `fileops`, `setting`, `wizard_recipe`, `iepcmp` | **αντιγράφονται** όπως είναι |
 
 Επιπλέον, μέσα στην Τράπεζα **διατηρούνται** οι δικές σου διορθώσεις: οι συνδέσεις `question_section` με `origin` manual/ai/rejected και ο τύπος/εικόνα ερωτήματος με `*_origin = manual`.
 
@@ -107,6 +107,8 @@ erDiagram
     **`trash`** — `id`, `orig_rel`, `trash_rel`, `kind`, `size`, `deleted`, `reason`. **`fileops`** — `id`, `ts`, `op`, `path`, `detail`. Γράφονται από τον file browser και τη διαγραφή εγγράφων.
 
     **`setting`** — `k`, `v`. Γράφεται από το `/settings` (`diagram_mode`, `help_default`, `help_show`, `help_mode`, `start_page`, `tip_*`, `wiz_criteria`, `gform_images`, `drive_url`, `rclone_remote`).
+
+    **`iepcmp`** — `item_id`, `qcode`, `qn` (στοιχείο quiz), `kind`, `mine`, `iep`, `auto` (αυτόματη κρίση), `status` (τελική κατάσταση), `manual` (1 = την άλλαξες εσύ), `note`, `updated`. Γράφεται από τη σελίδα Σύγκριση ΙΕΠ· οι χειροκίνητες κρίσεις διατηρούνται στο rebuild.
 
     **`wizard_recipe`** — `id`, `name`, `state` (JSON με όλη την κατάσταση των βημάτων του wizard), `created`, `updated`. Γράφεται από το `/wizard`· **επιβιώνει του rebuild**.
 

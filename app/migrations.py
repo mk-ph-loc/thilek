@@ -21,7 +21,11 @@ def _v3(c):
     """0.21.0: συνταγές του wizard εξαγωγών (δεδομένα χρήστη, διατηρούνται στο rebuild)."""
     c.execute("CREATE TABLE IF NOT EXISTS wizard_recipe(id INTEGER PRIMARY KEY, name TEXT NOT NULL, state TEXT NOT NULL DEFAULT '{}', created TEXT, updated TEXT)")
 
-MIGRATIONS = [(1, _v1), (2, _v2), (3, _v3)]
+def _v4(c):
+    """0.25.0: σύγκριση απαντήσεων με το ΙΕΠ (δεδομένα χρήστη λόγω χειροκίνητων αλλαγών, διατηρούνται στο rebuild)."""
+    c.execute("CREATE TABLE IF NOT EXISTS iepcmp(item_id TEXT NOT NULL, qcode TEXT NOT NULL, qn INTEGER NOT NULL, kind TEXT, mine TEXT, iep TEXT, auto TEXT, status TEXT, manual INTEGER NOT NULL DEFAULT 0, note TEXT, updated TEXT, PRIMARY KEY(item_id,qcode,qn))")
+
+MIGRATIONS = [(1, _v1), (2, _v2), (3, _v3), (4, _v4)]
 LATEST = MIGRATIONS[-1][0]
 
 def tables(c): return {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}

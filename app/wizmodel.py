@@ -20,7 +20,7 @@ DEFAULT = {'criteria': {}, 'members': [], 'mode': 'merge', 'gran': 'item', 'orde
            'format': 'excel', 'title': 'Αναφορά ασκήσεων', 'style': 'kids', 'sx': [], 'hide': True, 'mdmode': 'image', 'numbering': 'new',
            'link_prefix': 'pdf/', 'bundle': False, 'store': 'download', 'preview': True,
            'x_school': '', 'x_class': '', 'x_date': '', 'x_dur': '', 'x_sub': '', 'x_notes': '', 'x_course': '', 'x_tpl': 'default', 'x_ver': 'student', 'x_grp': 'item', 'x_mode': 'image',
-           'm_cat': 'single', 'm_tags': True, 'g_name': 'required', 'g_img': 'default'}
+           'cmp': False, 'm_cat': 'single', 'm_tags': True, 'g_name': 'required', 'g_img': 'default'}
 
 
 def key(item, code): return f'{item}|{code}'
@@ -224,6 +224,13 @@ def excel_bytes(c, es, st, root=None):
         if sol: files.append((r['course_code'], r['solution_path'], sol))
         if md: files.append((r['course_code'], r['sol_rel'], md))
     last = ws.max_row
+    if st.get('cmp'):
+        from . import iepcmp
+        cs = wb.create_sheet('Σύγκριση ΙΕΠ'); cs.append(['Θέμα', 'Ερώτημα', 'Στοιχείο', 'Τύπος', 'Η απάντησή μου', 'ΙΕΠ', 'Αυτόματο', 'Κατάσταση', 'Χειροκίνητο', 'Σημείωση'])
+        for cell in cs[1]: cell.font = Font(bold=True, color='FFFFFF'); cell.fill = PatternFill('solid', fgColor='1E3A8A')
+        for x in iepcmp.for_entries(c, es): cs.append([x['item_id'], x['qcode'], x['qn'], x['kind'], x['mine'], x['iep'], iepcmp.label(x['auto']), iepcmp.label(x['status']), 'ναι' if x['manual'] else '', x['note'] or ''])
+        for i, wd in enumerate((8, 10, 9, 12, 28, 26, 14, 14, 12, 60), 1): cs.column_dimensions[openpyxl.utils.get_column_letter(i)].width = wd
+        cs.freeze_panes = 'A2'
     ws.append([]); ws.append(['', '', 'Σύνολο (ορατά)', f'=SUMIF(K{first}:K{last},"ναι",D{first}:D{last})'])
     for cell in ws[ws.max_row]: cell.font = Font(bold=True)
     for i, wd in enumerate((6, 11, 9, 9, 14, 8, 12, 40, 12, 11, 22, 16, 16, 24), 1): ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = wd

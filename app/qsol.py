@@ -91,6 +91,8 @@ def check_item(d, n):
     if not it['stem']: err.append('λείπει το stem')
     pts = _num(d.get('points', 1)); it['points'] = pts if pts is not None and pts >= 0 else 1
     if d.get('points') is not None and (pts is None or pts < 0): err.append('άκυρο points')
+    part = str(d.get('part') or '').strip()
+    if part: it['part'] = part if part in ('α', 'β', 'γ', 'δ', 'ε', 'στ', 'ζ', 'η', 'θ') else ''
     img = d.get('image')
     if img:
         if isinstance(img, str) and IMG.match(img) and '..' not in img: it['image'] = img
