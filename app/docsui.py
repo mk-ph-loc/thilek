@@ -29,6 +29,17 @@ def docs_js(): return Response((STATIC / 'docs.js').read_text(encoding='utf-8'),
 def _ul(items): return '<ul>' + ''.join(f'<li>{mdrich.inline(x)}</li>' for x in items) + '</ul>'
 
 
+def settings_now():
+    from . import settings as st
+    return st.get_all()
+
+
+def html_attrs(s):
+    """Χαρακτηριστικά του <html> που διαβάζουν τα static scripts (CSP: όχι inline JS): είδη χωρίς tooltip και τρόπος βοήθειας."""
+    off = ','.join(k for k in ('hdr', 'btn', 'danger', 'sel', 'opt', 'list', 'txt', 'file', 'sum') if s.get('tip_' + k) == 'off')
+    return f" data-notips='{off}' data-helpmode='{E(s.get('help_mode', 'remember'))}'"
+
+
 def help_html(path=None, settings=None):
     """Το πλαίσιο βοήθειας για τη διαδρομή (ή '' αν δεν υπάρχει ή είναι απενεργοποιημένο)."""
     key = helpdb.key_for(path if path is not None else PATH.get())
@@ -43,5 +54,6 @@ def help_html(path=None, settings=None):
             f"<div class='adm adm-warning'><p class=adm-t>✖ Τι ΔΕΝ μπορεί</p>{_ul(h['cannot'])}</div>"
             f"<div class='adm adm-info'><p class=adm-t>💾 Πού αποθηκεύονται τα δεδομένα</p><p>{mdrich.inline(h['data'])}</p></div>"
             f"<div class='adm adm-note'><p class=adm-t>🔗 Δες επίσης</p><p>{see}</p></div>")
+    extra = (f"<details class=help-extra><summary>📄 Πρότυπο αρχείου λύσης, σημειώσεις και επεκτάσεις</summary>{mdrich.render(h['extra'], settings.get('diagram_mode', 'svg'), 'hx')[0]}</details>") if h.get('extra') else ''
     return (f"<details class=help data-hk='{key}' data-def='{'open' if settings.get('help_default') == 'open' else 'closed'}'><summary>ℹ Βοήθεια σελίδας: {E(h['title'])}</summary>"
-            f"<div class=help-grid>{grid}</div><p class=help-foot>Ό,τι αλλάζει εδώ ρυθμίζεται στις <a href='/settings'>Ρυθμίσεις</a>{sec} · <a href='/manual/faq'>Ερωτήσεις-απαντήσεις</a></p></details>")
+            f"<div class=help-grid>{grid}</div>{extra}<p class=help-foot>Ό,τι αλλάζει εδώ ρυθμίζεται στις <a href='/settings'>Ρυθμίσεις</a>{sec} · <a href='/manual/faq'>Ερωτήσεις-απαντήσεις</a></p></details>")

@@ -2,7 +2,9 @@
 (function () {
   function ls(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
   document.querySelectorAll('details.help[data-hk]').forEach(function (d) {
-    var k = 'thilek.help.' + d.dataset.hk, v = ls(k);
+    var k = 'thilek.help.' + d.dataset.hk, v = ls(k), mode = document.documentElement.getAttribute('data-helpmode') || 'remember';
+    if (mode === 'open') { d.open = true; return; }          // «ΠΑΝΤΑ ανοιχτή»: δεν διαβάζει ούτε γράφει μνήμη
+    if (mode === 'closed') { d.open = false; return; }
     d.open = v === '1' ? true : v === '0' ? false : d.dataset.def === 'open';
     d.addEventListener('toggle', function () { ls(k, d.open ? '1' : '0'); });
   });

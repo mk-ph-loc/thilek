@@ -193,7 +193,7 @@ def listing(rel='', msg='', warn=''):
     help_ = ("<details class=help><summary>Τι προστατεύει το σύστημα</summary><ul><li>🔒 <b>Μπλοκάρεται</b> η διαγραφή/μετονομασία των PDF και Word του ΙΕΠ, του βιβλίου, της ύλης, του ευρετηρίου, των φακέλων συστήματος και της βάσης.</li>"
              "<li>⚠ <b>Θέλει επιβεβαίωση</b> η αλλαγή σε λύσεις εκπαιδευτικού (.md) και στις εικόνες τους.</li><li>Κάθε διαγραφή ή αντικατάσταση πηγαίνει στον <b>κάδο</b> και μπορεί να επανέλθει.</li>"
              "<li>Δεν επιτρέπονται εκτελέσιμα/ενεργά αρχεία (.html, .js, .py, .sh, .exe…) και διαδρομές εκτός του φακέλου δεδομένων.</li><li>Μετά από αλλαγές στο <code>orig/</code> τρέξε «Σάρωση φακέλου» (Λύσεις) ή <code>thilek-rebuild</code> (νέα PDF).</li></ul></details>")
-    body = (CSS + f"<h2>File browser</h2><div class=fbcrumb>{crumbs(rel)}</div>{box('good', E(msg))}{box('warn', E(warn))}{info}{help_}"
+    body = (CSS + f"<h2>File browser</h2><div class=fbcrumb>{crumbs(rel)}</div>{box('good', E(msg))}{box('warn', E(warn))}{info}{__import__('app.syncui', fromlist=['x']).drive_bar()}{help_}"
             f"<div class=fb-grid>{up}{mk}</div><form method=post action='/fb/delete'><input type=hidden name=back value='{E(rel)}'>{bulk}"
             f"<table><tr><th></th><th>Όνομα</th><th>Χρήση στο σύστημα</th><th>Μέγεθος</th><th>Τροποποίηση</th><th>Στη βάση</th><th>Ενέργειες</th></tr>{''.join(trs) or '<tr><td colspan=7>Άδειος φάκελος.</td></tr>'}</table></form>"
             f"<details><summary>Τελευταίες ενέργειες αρχείων</summary><table><tr><th>Ώρα</th><th>Ενέργεια</th><th>Διαδρομή</th><th>Λεπτομέρειες</th></tr>{nolog}</table></details>")

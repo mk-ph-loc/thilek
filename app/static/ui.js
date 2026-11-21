@@ -72,9 +72,21 @@
   }
 
   /* ---- tooltips ---- */
+  var OFF = (d.documentElement.getAttribute('data-notips') || '').split(',').filter(Boolean);    // είδη χωρίς tooltip (Ρυθμίσεις)
+  function kindOf(el) {
+    var tag = el.tagName, t = (el.type || '').toLowerCase(), c = el.classList;
+    if (tag === 'A' && el.closest('header')) return 'hdr';
+    if (tag === 'SUMMARY') return 'sum';
+    if (c.contains('danger')) return 'danger';
+    if (c.contains('r-sel')) return 'sel'; if (c.contains('r-opt')) return 'opt'; if (c.contains('r-list')) return 'list'; if (c.contains('r-txt')) return 'txt'; if (c.contains('r-file')) return 'file';
+    if (tag === 'BUTTON' || c.contains('btn') || t === 'submit' || t === 'button') return 'btn';
+    return '';
+  }
   function tooltips() {
+    if (OFF.length) d.querySelectorAll('[title]').forEach(function (el) { if (OFF.indexOf(kindOf(el)) >= 0) { el.setAttribute('data-tip', el.getAttribute('title')); el.removeAttribute('title'); } });
     var tip = d.createElement('div'); tip.id = 'tip'; d.body.appendChild(tip); var cur = null;
     function show(el, x, y) {
+      if (OFF.indexOf(kindOf(el)) >= 0) { tip.style.display = 'none'; return; }
       var t = tipFor(el); if (!t) return; if (el.hasAttribute('title')) { el.setAttribute('data-tip', el.getAttribute('title')); el.removeAttribute('title'); }
       tip.textContent = t; tip.style.display = 'block'; move(x, y);
     }

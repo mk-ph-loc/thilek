@@ -107,13 +107,13 @@ def action_bar(c, criteria=None, back='', pre_exam=''):
 SOLCTL_CSS = ("<style>.solctl .solord{list-style:none;margin:.3rem 0;padding:0}.solctl .solord li{display:flex;align-items:center;gap:.4rem;margin:.15rem 0;padding:.1rem .5rem;border:1px solid #9994;border-radius:6px;max-width:26rem}"
               ".solctl .solord li label{flex:1}.solctl .solord li button{padding:0 .45rem;line-height:1.3}.solctl .solrow{margin:.3rem 0}.solctl .solbtn{margin:.4rem 0}</style>")
 
-def sol_controls():
+def sol_controls(style='kids'):
     """Επιλογές εξαγωγής λύσεων εκπαιδευτικού (κοινές για μπάρα ενεργειών και σελίδα /lysi): ενότητες με σειρά (↑↓ και έτοιμες διατάξεις), στυλ, κουμπιά εξαγωγής.
     Η σειρά είναι η σειρά των στοιχείων στη φόρμα (ο browser στέλνει τα τσεκαρισμένα sx με τη σειρά του DOM)."""
     from .solstyle import UNITS, PRESETS, STYLES
     items = ''.join(f"<li data-k={k}><label><input type=checkbox name=sx value={k} checked> {ic} {html.escape(t)}</label> <button type=button class=up title='πάνω'>↑</button><button type=button class=dn title='κάτω'>↓</button></li>" for k, t, ic in UNITS)
     pre = ''.join(f"<option value='{','.join(o)}'>{html.escape(t)}</option>" for _, t, o in PRESETS)
-    sty = ''.join(f"<option value={k}{' selected' if k == 'kids' else ''}>{html.escape(v['label'])}</option>" for k, v in STYLES.items())
+    sty = ''.join(f"<option value={k}{' selected' if k == (style if style in STYLES else 'kids') else ''}>{html.escape(v['label'])}</option>" for k, v in STYLES.items())
     return (f"{SOLCTL_CSS}<div class=solctl><div class=solrow>Ενότητες και σειρά: <select class=solpre><option value=''>— έτοιμη διάταξη —</option>{pre}</select> <small>ή τσεκάρισμα και ↑↓</small></div><ul class=solord>{items}</ul>"
             f"<div class=solrow>τίτλος <input name=sol_title size=22 value='Λύσεις εκπαιδευτικού'> στυλ <select name=sstyle>{sty}</select> <label><input type=checkbox name=hide value=1 checked> κρυφές λύσεις με κλικ (HTML μαθητή)</label></div>"
             "<div class=solbtn><button name=act value=reveal>Reveal.js</button> <button name=act value=html>HTML μαθητή</button> <button name=act value=solmd>Markdown/Word</button> <button name=act value=moodle>Moodle XML</button></div></div>"

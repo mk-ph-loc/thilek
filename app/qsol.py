@@ -130,6 +130,26 @@ def check_item(d, n):
     it['err'] = err
     return it
 
+OPT_PAGES = (('book_first_page', 'πρώτη σελίδα βιβλίου'), ('book_last_page', 'τελευταία σελίδα βιβλίου'), ('book_solution_page', 'σελίδα βιβλίου όπου υπάρχει λύση'))
+
+
+def opt_fields(fm):
+    """Προαιρετικά πεδία προτύπου (0.20.0): style (στυλ εξαγωγής) και σελίδες βιβλίου. Επιστρέφει προειδοποιήσεις· δεν απορρίπτει το αρχείο."""
+    from .solstyle import STYLES
+    w = []; nums = {}
+    if fm.get('style') not in (None, '') and str(fm['style']) not in STYLES: w.append(f'style «{fm["style"]}» άγνωστο (' + '|'.join(STYLES) + ')')
+    for k, lab in OPT_PAGES:
+        if k in fm and fm[k] not in (None, ''):
+            try: nums[k] = int(str(fm[k]).strip())
+            except ValueError: w.append(f'{k} ({lab}): όχι ακέραιος αριθμός'); continue
+            if nums[k] < 1: w.append(f'{k} ({lab}): πρέπει να είναι ≥ 1')
+    a, b = nums.get('book_first_page'), nums.get('book_last_page')
+    if a and b and a > b: w.append('book_first_page μεγαλύτερη από book_last_page')
+    s_ = nums.get('book_solution_page')
+    if s_ and a and b and not a <= s_ <= b: w.append('book_solution_page εκτός του διαστήματος πρώτη–τελευταία σελίδα')
+    return w
+
+
 def parse(text, filename=''):
     """Κείμενο αρχείου -> {item_id, qcode, fm, sections, quiz, warnings, status}. Δεν σηκώνει exception για κακό περιεχόμενο."""
     warn = []; key = name_key(pathlib.Path(filename).name) if filename else None
@@ -153,6 +173,7 @@ def parse(text, filename=''):
     elif filename: warn.append('όνομα αρχείου εκτός μορφής <ID>.<θέμα>-<υπ>.md')
     if 'schema' in fm and fm.get('schema') != 2: warn.append(f'schema {fm.get("schema")} (αναμένεται 2)')
     if 'points' in fm and _num(fm.get('points')) is None: warn.append('το points δεν είναι αριθμός')
+    warn += opt_fields(fm)
     st = str(fm.get('status') or 'draft')
     if st not in STATUS: warn.append(f'άγνωστο status «{st}» (draft|reviewed)'); st = 'draft'
     secs = split_sections(body, warn)

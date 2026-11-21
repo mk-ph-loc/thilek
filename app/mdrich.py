@@ -199,3 +199,8 @@ def diagram_sources(text):
             for _, body in s[1]: out += diagram_sources(body)
         else: out += diagram_sources(s[2])
     return out
+
+RICH_CSS += (".help-extra{margin:.2rem .8rem .8rem;border:1px dashed var(--border);border-radius:8px;padding:.1rem .9rem}.help-extra>summary{cursor:pointer;font-weight:600;padding:.4rem 0}"
+             ".synclist{border-top:1px solid var(--border);margin:.6rem 0}.syncrow{display:grid;grid-template-columns:minmax(280px,420px) 1fr;gap:.8rem;align-items:center;padding:.5rem .2rem;border-bottom:1px solid var(--border)}.syncrow form{margin:0}.syncrow button[disabled]{opacity:.5}"
+             ".help-extra pre,.manual pre{max-height:none}.drivebar{margin:.4rem 0}.booknote{margin:.2rem 0 .6rem}"
+             ".joblog{max-height:440px;overflow:auto;white-space:pre-wrap;word-break:break-word;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.6rem;font-size:.85rem}")

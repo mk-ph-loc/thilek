@@ -97,6 +97,17 @@ def lysi_md(item_id: str, qcode: str):
     fn = r['relpath'].rsplit('/', 1)[-1]
     return Response(raw_text(r), media_type='text/markdown; charset=utf-8', headers={'Content-Disposition': f'attachment; filename="{fn}"'})
 
+def book_line(fm):
+    """Γραμμή «Βιβλίο: σελ. α–β · λύση στη σελ. γ · στυλ …» από τα προαιρετικά πεδία του front matter (αν υπάρχουν)."""
+    from .solstyle import STYLES
+    a, b, s_ = (fm.get(k) for k in ('book_first_page', 'book_last_page', 'book_solution_page')); st = str(fm.get('style') or '')
+    parts = []
+    if a or b: parts.append(f"σελίδες βιβλίου <b>{E(a if a else '?')}–{E(b if b else '?')}</b>")
+    if s_: parts.append(f"η λύση υπάρχει στη σελίδα <b>{E(s_)}</b> (<a href='/coverage'>Ύλη/σελίδα</a>)")
+    if st in STYLES: parts.append(f"στυλ εξαγωγής: <b>{E(STYLES[st]['label'])}</b>")
+    return f"<p class=booknote>📖 {' · '.join(parts)}</p>" if parts else ''
+
+
 @router.get('/lysi/{item_id}/{qcode}', response_class=HTMLResponse, dependencies=[Depends(auth)])
 def lysi_page(item_id: str, qcode: str):
     c = db(); r = qsol.get(c, item_id, qcode)
@@ -125,10 +136,10 @@ def lysi_page(item_id: str, qcode: str):
     fm = r['fm']; tags = ', '.join(str(t) for t in fm.get('tags') or []) if isinstance(fm.get('tags'), list) else ''
     meta = (f"<p>{status_tag(r['status'])} · θέμα <a href='/review/{E(item_id)}'>{E(item_id)}</a> · ερώτημα <b>{E(qcode)}</b> · {E(fm.get('points', q['points'] if q else '—'))} μον. · τύπος {E(fm.get('qtype', '—'))}"
             + (f" · <a href='/q/{q['id']}'>περιήγηση ερωτήματος</a>" if q else ' · <span class=warn>χωρίς αντίστοιχο ερώτημα στη βάση</span>')
-            + (f" · ετικέτες: {E(tags)}" if tags else '') + f" · <small>{E(r['relpath'])}</small></p>")
+            + (f" · ετικέτες: {E(tags)}" if tags else '') + f" · <small>{E(r['relpath'])}</small></p>" + book_line(fm))
     bar = (f"<div class=bar>{prev_a} <b>{pos + 1}/{len(keys)}</b> {next_a} · {cp('all', 'Αντιγραφή όλου (Markdown)')} · <a href='{E(lysi_url(item_id, qcode))}/md'>⬇ .md</a> · <a href='/lyseis'>όλες οι λύσεις</a> · <small>πλήκτρα ← →</small></div>")
     exp = (f"<details><summary>Εξαγωγή αυτού του ερωτήματος (Reveal.js, Markdown/Word, Moodle XML)</summary><form method=post action='/lyseis/export' class=filters>"
-           f"<input type=hidden name=keys value='{E(item_id)}|{E(qcode)}'>{sol_controls()}</form></details>")
+           f"<input type=hidden name=keys value='{E(item_id)}|{E(qcode)}'>{sol_controls(str(fm.get('style') or 'kids'))}</form></details>")
     c.close()
     body = f"{CSS}<div class=lysi><h2>Λύση εκπαιδευτικού · θέμα {E(item_id)} · ερώτημα {E(qcode)}</h2>{bar}{meta}{warns}{exp}{tabbar}{panels}{hid}</div>{KATEX}"
     return page(f'Λύση {item_id} {qcode}', body)

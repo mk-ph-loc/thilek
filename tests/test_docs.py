@@ -82,9 +82,9 @@ def test_manual_sections_for_help_exist(cl):
 def test_settings_roundtrip_and_validation(cl):
     t = cl.get('/settings', auth=A).text; assert 'name=diagram_mode value=svg checked' in t.replace('"', '') and 'localStorage' in t
     r = cl.post('/settings', data={'diagram_mode': 'local', 'help_default': 'closed', 'help_show': 'on'}, auth=A, headers=H, follow_redirects=False); assert r.status_code == 303
-    from app import settings; assert settings.get_all() == {'diagram_mode': 'local', 'help_default': 'closed', 'help_show': 'on'}
+    from app import settings; g = settings.get_all(); assert (g['diagram_mode'], g['help_default'], g['help_show']) == ('local', 'closed', 'on')
     cl.post('/settings', data={'diagram_mode': 'evil', 'help_default': 'open', 'help_show': 'x'}, auth=A, headers=H)
-    assert settings.get_all() == {'diagram_mode': 'local', 'help_default': 'open', 'help_show': 'on'}      # άκυρες τιμές αγνοούνται
+    g = settings.get_all(); assert (g['diagram_mode'], g['help_default'], g['help_show']) == ('local', 'open', 'on')      # άκυρες τιμές αγνοούνται
 
 def test_settings_post_needs_same_origin_and_auth(cl):
     assert cl.post('/settings', data={'diagram_mode': 'local'}, auth=A, headers={'origin': 'http://evil.example', 'host': 'testserver'}).status_code == 403
