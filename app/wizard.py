@@ -153,7 +153,7 @@ def page2(c, rid, name, st):
     if st['unsel'] == 'manual':
         sl = M.siblings(c, [tuple(m) for m in st['members']]); chosen = set(st['manual_sel'])
         sib = '<h4>Τα υπόλοιπα υποερωτήματα των θεμάτων σου: τσέκαρε όσα θα εμφανιστούν</h4>' + ('<table>' + ''.join(f"<tr><td><input type=checkbox class=r-sel name=manual_sel value='{E(M.key(*s))}' {'checked' if M.key(*s) in chosen else ''}></td><td>{E(s[0])} · {E(s[1])}</td></tr>" for s in sl) + '</table>' if sl else '<p><i>Δεν υπάρχουν άλλα υποερωτήματα.</i></p>')
-    inner = (f"<h3>2. Οργάνωση</h3><fieldset><legend>Αποτέλεσμα</legend>{rd('mode', (('merge', 'Συγχώνευση: ένα αρχείο για όλα'), ('each', 'Ένα-ένα: ξεχωριστό για κάθε θέμα (θα το αξιοποιήσει η έκδοση 0.22· τώρα βγαίνει ένα αρχείο)')), st['mode'])}</fieldset>"
+    inner = (f"<h3>2. Οργάνωση</h3><fieldset><legend>Αποτέλεσμα</legend>{rd('mode', (('merge', 'Συγχώνευση: ένα αρχείο για όλα'), ('each', 'Ένα-ένα: ξεχωριστή σελίδα ανά θέμα ή ερώτημα + index + zip (Reveal.js και HTML μαθητή)')), st['mode'])}{fld('Ένα-ένα ανά', '<select class=r-list name=gran>' + opt('item', 'θέμα', st['gran']) + opt('question', 'ερώτημα', st['gran']) + '</select>')}</fieldset>"
              f"<fieldset><legend>Σειρά ερωτημάτων</legend>{rd('order', M.ORDERS, st['order'])}{mem}</fieldset>"
              f"<fieldset><legend>Τα υπόλοιπα υποερωτήματα των θεμάτων που διάλεξες</legend>{rd('unsel', M.UNSEL, st['unsel'])}{sib}</fieldset>" + nav(rid, 2))
     return shell(rid, name, 2, inner)
@@ -186,7 +186,7 @@ def page5(rid, name, st):
     units = ''.join(f"<label class='f chk'><input type=checkbox class=r-opt name=sx value={k} {'checked' if k in sx else ''}>{ic} {E(t)}</label>" for k, t, ic in UNITS)
     mdm = ''.join(opt(v, t, st['mdmode']) for v, t in (('image', 'εικόνες'), ('text', 'κείμενο'), ('both', 'και τα δύο')))
     num = opt('new', 'νέα (1,2,3)', st['numbering']) + opt('source', 'πηγή (θέμα/ερώτημα)', st['numbering'])
-    store = opt('download', 'λήψη στον υπολογιστή', st['store']) + opt('server', 'αποθήκευση στον server (07_EXAGOGES/wizard)', st['store'])
+    store = opt('download', 'λήψη στον υπολογιστή', st['store']) + opt('server', 'αποθήκευση στον server (07_EXAGOGES/wizard)', st['store']) + opt('publish', 'δημοσίευση στον server για μαθητές (/p/, με κωδικό μαθητή)', st['store'])
     prefix = fld('Πρόθεμα συνδέσμων αρχείων', f"<input class=r-txt name=link_prefix size=14 value='{E(st['link_prefix'])}'>")
     inner = (f"<h3>5. Περιεχόμενο και επιλογές <small>(μορφή: {E(dict(M.FORMATS)[st['format']])})</small></h3>" + fld('Τίτλος', f"<input class=r-txt name=title size=40 value='{E(st['title'])}'>")
              + f"<fieldset><legend>Excel</legend>{prefix}{ck('bundle', st['bundle'], 'Επισύναψη των PDF και των λύσεων στο zip (στις θέσεις των συνδέσμων)')}</fieldset>"
@@ -213,6 +213,11 @@ def produce(c, st, es, preview=False):
         did = new_doc(c, title, txt, f'wizard ({len(es)} στοιχεία)'); c.commit(); return ('redirect', f'/docs/{did}')
     if fm == 'htmldoc':
         r = collections.compose(c, members_of(es), {'title': title, 'numbering': st['numbering'], 'group': '', 'solutions': False}); return ('response', r)
+    if fm in ('reveal', 'student') and st['mode'] == 'each':
+        from . import wizsite
+        files, model = wizsite.build_site(c, st, es)
+        if not files: raise HTTPException(422, 'Κανένα από τα ερωτήματα δεν έχει αρχείο λύσης (.md). Δες τη σελίδα «Λύσεις».')
+        return ('site', files, model)
     if fm in ('reveal', 'student', 'moodle'):
         r = solexport.export(c, {'reveal': 'reveal', 'student': 'html', 'moodle': 'moodle'}[fm], members_of(es), st['sx'], title, st['style'], bool(st['hide'])); return ('response', r)
     if fm == 'merge':
@@ -247,7 +252,7 @@ def page6(c, rid, name, st):
              f"{tg_txt}</p>"
              + (f"<div class='adm adm-warning'><p class=adm-t>Προσοχή</p><ul>{wb}</ul></div>" if warns else "<div class='adm adm-success'><p class=adm-t>✔ Κανένα πρόβλημα</p></div>")
              + f"<table><tr><th>Θέμα</th><th>Ερώτημα</th><th>Μον.</th><th>Τύπος</th><th>Λύση</th><th>Εμφάνιση</th></tr>{rows}</table>{prev}"
-             + f"<div class=wnav><a class=btn href='/wizard/{rid}/5'>← Πίσω</a><button class=primary formaction='/wizard/{rid}/generate' name=how value=run>Εξαγωγή ({'λήψη' if st['store'] == 'download' else 'αποθήκευση στον server'})</button> <a class=btn href='/wizard'>Οι συνταγές μου</a></div>"
+             + f"<div class=wnav><a class=btn href='/wizard/{rid}/5'>← Πίσω</a><button class=primary formaction='/wizard/{rid}/generate' name=how value=run>Εξαγωγή ({dict(download='λήψη', server='αποθήκευση στον server', publish='δημοσίευση').get(st['store'])})</button> <a class=btn href='/wizard'>Οι συνταγές μου</a></div>"
              f"<fieldset><legend>Όνομα συνταγής</legend>{rn}<button formaction='/wizard/{rid}/6' name=go value=rename>Μετονομασία</button></fieldset>")
     return shell(rid, name, 6, inner)
 
@@ -261,6 +266,7 @@ def wizard_preview(rid: int):
     if r[0] == 'response':
         resp = r[1]; h = {k: v for k, v in resp.headers.items() if k.lower() in ('content-type',)}; return Response(resp.body, media_type=h.get('content-type', 'text/html'))
     if r[0] == 'file': return Response(r[1], media_type='text/plain; charset=utf-8')
+    if r[0] == 'site': return Response(r[1]['index.html'], media_type='text/html; charset=utf-8')
     raise HTTPException(404)
 
 
@@ -289,10 +295,25 @@ def wizard_generate(request: Request, rid: int):
     try:
         name, st = get_recipe(c, rid); es = M.entries(c, st); r = produce(c, st, es)
         if r[0] == 'redirect': return RedirectResponse(r[1], status_code=303)
+        if r[0] == 'site':
+            from . import wizsite, publish
+            files, model = r[1], r[2]
+            if st['store'] == 'publish':
+                sl = publish.save_site(st['title'], files, source=f'wizard: {name}')
+                return page('Δημοσιεύτηκε', f"<h2>Δημοσιεύτηκε</h2><p>{len(model['pages'])} σελίδες · <a href='/p/{E(sl)}/'>/p/{E(sl)}/</a></p>"
+                            + ('' if publish.get_pw_hash() else "<div class='adm adm-warning'><p class=adm-t>Δεν υπάρχει κωδικός μαθητή</p><p>Ορίστε τον στις <a href='/publish'>Δημοσιεύσεις</a>· μέχρι τότε ανοίγει μόνο με κωδικό διαχειριστή.</p></div>")
+                            + f"<p><a href='/publish'>Δημοσιεύσεις</a> · <a href='/wizard/{rid}/6'>Πίσω στον wizard</a></p>")
+            readme = f"{st['title']}\n\nΑνοίξτε το index.html. Κάθε σελίδα είναι αυτόνομο αρχείο (χωρίς διαδίκτυο). Το data.json έχει τα δεδομένα (ερωτήματα, μονάδες) χωριστά από την παρουσίαση.\n"
+            r = ('file', wizsite.zip_bytes(files, readme), f"{slug(st['title'])}.zip", 'application/zip')
         if r[0] == 'response':
             resp = r[1]; ct = resp.headers.get('content-type', 'text/html')
             ext = 'xml' if 'xml' in ct else 'html'; body = resp.body; fname = f"{slug(st['title'])}.{ext}"; mime = ct; headers = {'Content-Disposition': resp.headers.get('content-disposition', f'attachment; filename="{fname}"')}
         else: _, body, fname, mime = r; headers = {'Content-Disposition': disp(fname)}
+        if st['store'] == 'publish':
+            from . import publish
+            if not str(mime).startswith('text/html'): raise HTTPException(422, 'Η δημοσίευση αφορά μόνο σελίδες HTML.')
+            s_ = publish.save_site(st['title'], {'index.html': body}, source=f'wizard: {name}')
+            return page('Δημοσιεύτηκε', f"<h2>Δημοσιεύτηκε</h2><p><a href='/p/{E(s_)}/'>/p/{E(s_)}/</a></p><p><a href='/publish'>Δημοσιεύσεις</a> · <a href='/wizard/{rid}/6'>Πίσω στον wizard</a></p>")
         if st['store'] == 'server':
             course = next((e['row']['course_code'] for e in es if e['row']['course_code']), '') or 'EXPORTS'
             d = pathlib.Path(config.load()['data_root']) / course / '07_EXAGOGES' / 'wizard'; d.mkdir(parents=True, exist_ok=True)
@@ -334,6 +355,7 @@ async def wizard_post(request: Request, rid: int, step: int):
                     if 0 <= j < len(mem): mem[i], mem[j] = mem[j], mem[i]
                 st['members'] = [list(m) for m in mem]; save_state(c, rid, st); return RedirectResponse(f'/wizard/{rid}/2', status_code=303)
             if fv(f, 'mode') in ('merge', 'each'): st['mode'] = fv(f, 'mode')
+            if fv(f, 'gran') in ('item', 'question'): st['gran'] = fv(f, 'gran')
             if fv(f, 'order') in dict(M.ORDERS): st['order'] = fv(f, 'order')
             if fv(f, 'unsel') in dict(M.UNSEL): st['unsel'] = fv(f, 'unsel')
             st['manual_sel'] = [k for k in f.getlist('manual_sel') if '|' in str(k)] if st['unsel'] == 'manual' else []
@@ -359,7 +381,7 @@ async def wizard_post(request: Request, rid: int, step: int):
             if fv(f, 'mdmode') in ('image', 'text', 'both'): st['mdmode'] = fv(f, 'mdmode')
             if fv(f, 'numbering') in ('new', 'source'): st['numbering'] = fv(f, 'numbering')
             if fv(f, 'style') in STYLES: st['style'] = fv(f, 'style')
-            if fv(f, 'store') in ('download', 'server'): st['store'] = fv(f, 'store')
+            if fv(f, 'store') in ('download', 'server', 'publish'): st['store'] = fv(f, 'store')
             keys = {u[0] for u in UNITS}; st['sx'] = [k for k in f.getlist('sx') if k in keys]
         if step == 6 and go == 'rename': save_state(c, rid, st, fv(f, 'rname')); return RedirectResponse(f'/wizard/{rid}/6', status_code=303)
         save_state(c, rid, st)

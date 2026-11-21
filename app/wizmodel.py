@@ -15,7 +15,7 @@ CRITERIA = (('q', 'Λέξεις-κλειδιά'), ('qtype', 'Τύπος ερωτ
             ('yli', 'Ενότητα ΙΕΠ'), ('section', 'Υποενότητα βιβλίου'), ('tag', 'Ετικέτες'), ('lsol', 'Λύση εκπαιδευτικού (με/χωρίς)'), ('upto', 'Ύλη μέχρι σελίδα βιβλίου'))
 CRITERIA_KEYS = tuple(k for k, _ in CRITERIA)
 
-DEFAULT = {'criteria': {}, 'members': [], 'mode': 'merge', 'order': 'item', 'points': {}, 'target': None, 'unsel': 'omit', 'manual_sel': [],
+DEFAULT = {'criteria': {}, 'members': [], 'mode': 'merge', 'gran': 'item', 'order': 'item', 'points': {}, 'target': None, 'unsel': 'omit', 'manual_sel': [],
            'format': 'excel', 'title': 'Αναφορά ασκήσεων', 'style': 'kids', 'sx': [], 'hide': True, 'mdmode': 'image', 'numbering': 'new',
            'link_prefix': 'pdf/', 'bundle': False, 'store': 'download', 'preview': True}
 
@@ -41,6 +41,8 @@ def load_state(raw):
     if st['unsel'] not in dict(UNSEL): st['unsel'] = 'omit'
     if st['order'] not in dict(ORDERS): st['order'] = 'item'
     if st['mode'] not in ('merge', 'each'): st['mode'] = 'merge'
+    if st['gran'] not in ('item', 'question'): st['gran'] = 'item'
+    if st['store'] not in ('download', 'server', 'publish'): st['store'] = 'download'
     return st
 
 
@@ -140,6 +142,8 @@ def checks(es, st):
         w.append('Αυτή η μορφή δεν εφαρμόζει τις προσαρμοσμένες μονάδες· χρησιμοποιεί τις μονάδες των αρχείων/βάσης (Excel και Markdown τις εφαρμόζουν).')
     if st['format'] == 'merge' and any(e['vis'] != 'show' for e in es): w.append('Το PDF συγχώνευσης περιέχει ολόκληρα θέματα· οι ρυθμίσεις «κρυφά/στο τέλος» δεν εφαρμόζονται.')
     if st['format'] in ('reveal', 'student', 'moodle') and any(e['vis'] == 'hidden' for e in es): w.append('Στις λύσεις εκπαιδευτικού τα «κρυφά» δεν εμφανίζονται (παραλείπονται)· τα «στο τέλος» μπαίνουν στο τέλος.')
+    if st['mode'] == 'each' and st['format'] not in ('reveal', 'student'): w.append('Το «ένα-ένα» ισχύει μόνο για Reveal.js και HTML μαθητή· σε αυτή τη μορφή θα βγει ένα αρχείο.')
+    if st['store'] == 'publish' and st['format'] not in ('reveal', 'student', 'htmldoc'): w.append('Η δημοσίευση αφορά σελίδες HTML (Reveal.js, HTML μαθητή, HTML εκτύπωσης)· αυτή η μορφή δεν μπορεί να δημοσιευτεί.')
     return w
 
 
