@@ -3,7 +3,7 @@
 import datetime, json, pathlib, re
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from . import config, settings, wizmodel as M
+from . import config, settings, wizmodel as M, wizexam
 from .main_auth import auth
 from .review import db, page, html, same_origin, fld, chk, TYPE_OPTS
 from .library import select_questions, filters_of, chapter_opts, lsol_opts
@@ -187,9 +187,18 @@ def page5(rid, name, st):
     mdm = ''.join(opt(v, t, st['mdmode']) for v, t in (('image', 'εικόνες'), ('text', 'κείμενο'), ('both', 'και τα δύο')))
     num = opt('new', 'νέα (1,2,3)', st['numbering']) + opt('source', 'πηγή (θέμα/ερώτημα)', st['numbering'])
     store = opt('download', 'λήψη στον υπολογιστή', st['store']) + opt('server', 'αποθήκευση στον server (07_EXAGOGES/wizard)', st['store']) + opt('publish', 'δημοσίευση στον server για μαθητές (/p/, με κωδικό μαθητή)', st['store'])
+    from . import wizexam
+    tpls = opt('default', 'ενσωματωμένο πρότυπο', st['x_tpl']) + ''.join(opt(n, E(n), st['x_tpl']) for n in wizexam.list_templates())
+    if st['x_tpl'] != 'default' and st['x_tpl'] not in wizexam.list_templates(): tpls += opt(st['x_tpl'], E(st['x_tpl']) + ' (λείπει)', st['x_tpl'])
+    xg = ''.join(opt(k, E(t), st['x_grp']) for k, t in wizexam.GROUPS); xv = ''.join(opt(k, E(t), st['x_ver']) for k, t in wizexam.VERSIONS)
+    xm = ''.join(opt(v, t, st['x_mode']) for v, t in (('image', 'εικόνες'), ('text', 'κείμενο'), ('both', 'και τα δύο')))
+    tx = lambda k, lab, sz=24: fld(lab, f"<input class=r-txt name={k} size={sz} value='{E(st[k])}'>")
+    exam = (f"<fieldset><legend>Διαγώνισμα/τεστ Word</legend>{fld('Πρότυπο', f'<select class=r-list name=x_tpl>{tpls}</select>')} <a class=btn href='/wizard-templates'>Πρότυπα σχολείου και οδηγός</a>"
+            f"{tx('x_school', 'Σχολείο', 34)}{tx('x_course', 'Μάθημα')}{tx('x_class', 'Τάξη/τμήμα', 12)}{tx('x_date', 'Ημερομηνία', 12)}{tx('x_dur', 'Διάρκεια', 10)}{tx('x_sub', 'Υπότιτλος', 30)}{tx('x_notes', 'Οδηγίες', 60)}"
+            f"{fld('Ομαδοποίηση', f'<select class=r-list name=x_grp>{xg}</select>')}{fld('Ερωτήματα ως', f'<select class=r-list name=x_mode>{xm}</select>')}{fld('Έκδοση', f'<select class=r-list name=x_ver>{xv}</select>')}</fieldset>")
     prefix = fld('Πρόθεμα συνδέσμων αρχείων', f"<input class=r-txt name=link_prefix size=14 value='{E(st['link_prefix'])}'>")
     inner = (f"<h3>5. Περιεχόμενο και επιλογές <small>(μορφή: {E(dict(M.FORMATS)[st['format']])})</small></h3>" + fld('Τίτλος', f"<input class=r-txt name=title size=40 value='{E(st['title'])}'>")
-             + f"<fieldset><legend>Excel</legend>{prefix}{ck('bundle', st['bundle'], 'Επισύναψη των PDF και των λύσεων στο zip (στις θέσεις των συνδέσμων)')}</fieldset>"
+             + exam + f"<fieldset><legend>Excel</legend>{prefix}{ck('bundle', st['bundle'], 'Επισύναψη των PDF και των λύσεων στο zip (στις θέσεις των συνδέσμων)')}</fieldset>"
              + f"<fieldset><legend>Markdown / Word</legend>{fld('Εικόνες ή κείμενο', f'<select class=r-list name=mdmode>{mdm}</select>')}{fld('Αρίθμηση', f'<select class=r-list name=numbering>{num}</select>')}</fieldset>"
              + f"<fieldset><legend>Λύσεις εκπαιδευτικού (Reveal, HTML μαθητή, Moodle)</legend>{fld('Στυλ', f'<select class=r-list name=style>{sty}</select>')}<p>Ενότητες που περιλαμβάνονται:</p>{units}{ck('hide', st['hide'], 'Κρυφές λύσεις με κλικ (HTML μαθητή)')}</fieldset>"
              + f"<fieldset><legend>Αποθήκευση και προεπισκόπηση</legend>{ck('preview', st['preview'], 'Προεπισκόπηση πριν την εξαγωγή (όπου γίνεται)')}{fld('Πού', f'<select class=r-list name=store>{store}</select>')}</fieldset>" + nav(rid, 5))
@@ -220,6 +229,11 @@ def produce(c, st, es, preview=False):
         return ('site', files, model)
     if fm in ('reveal', 'student', 'moodle'):
         r = solexport.export(c, {'reveal': 'reveal', 'student': 'html', 'moodle': 'moodle'}[fm], members_of(es), st['sx'], title, st['style'], bool(st['hide'])); return ('response', r)
+    if fm == 'exam':
+        from . import wizexam
+        try: data, fname, mime = wizexam.build(c, st, es)
+        except ValueError as ex: raise HTTPException(422, str(ex))
+        return ('file', data, fname, mime)
     if fm == 'merge':
         items = sorted({m[0] for m in members_of(es, ('show',))}, key=int); data, n = tools_merge.build(c, items, False, False, 'by_item', 8, [], True)
         return ('file', data, 'thilek-merge.pdf', 'application/pdf')
@@ -243,6 +257,9 @@ def page6(c, rid, name, st):
     prev = ''
     if st['preview']:
         if fm in ('htmldoc', 'reveal', 'student'): prev = f"<h3>Προεπισκόπηση</h3><iframe class=wprev sandbox='allow-scripts' src='/wizard/{rid}/preview'></iframe>"
+        elif fm == 'exam':
+            from . import wizexam
+            prev = f"<h3>Προεπισκόπηση (σώμα ερωτημάτων, Markdown)</h3><pre>{E(wizexam.body_md(c, st, es, st['x_ver'] != 'student')[:6000])}</pre>"
         elif fm == 'md': prev = f"<h3>Προεπισκόπηση (Markdown)</h3><pre>{E(M.md_text(c, es, st)[:6000])}</pre>"
         else: prev = '<p><small>Για αυτή τη μορφή δεν υπάρχει οπτική προεπισκόπηση· ο πίνακας από κάτω δείχνει τι θα περιέχει.</small></p>'
     bad = bool(st['target']) and abs(t - st['target']) > 1e-6
@@ -381,9 +398,67 @@ async def wizard_post(request: Request, rid: int, step: int):
             if fv(f, 'mdmode') in ('image', 'text', 'both'): st['mdmode'] = fv(f, 'mdmode')
             if fv(f, 'numbering') in ('new', 'source'): st['numbering'] = fv(f, 'numbering')
             if fv(f, 'style') in STYLES: st['style'] = fv(f, 'style')
+            for k in ('x_school', 'x_class', 'x_date', 'x_dur', 'x_sub', 'x_notes', 'x_course'): st[k] = fv(f, k)[:300]
+            if fv(f, 'x_grp') in ('item', 'qtype', 'none'): st['x_grp'] = fv(f, 'x_grp')
+            if fv(f, 'x_mode') in ('image', 'text', 'both'): st['x_mode'] = fv(f, 'x_mode')
+            if fv(f, 'x_ver') in ('student', 'teacher', 'both'): st['x_ver'] = fv(f, 'x_ver')
+            if fv(f, 'x_tpl') == 'default' or wizexam.tpl_name_ok(fv(f, 'x_tpl')): st['x_tpl'] = fv(f, 'x_tpl') or 'default'
             if fv(f, 'store') in ('download', 'server', 'publish'): st['store'] = fv(f, 'store')
             keys = {u[0] for u in UNITS}; st['sx'] = [k for k in f.getlist('sx') if k in keys]
         if step == 6 and go == 'rename': save_state(c, rid, st, fv(f, 'rname')); return RedirectResponse(f'/wizard/{rid}/6', status_code=303)
         save_state(c, rid, st)
         return RedirectResponse(f'/wizard/{rid}/{min(step + 1, 6)}' if go == 'next' else f'/wizard/{rid}/{step}', status_code=303)
     finally: c.close()
+
+
+# ---------- πρότυπα Word σχολείου (0.23) ----------
+@router.get('/wizard-templates', response_class=HTMLResponse, dependencies=[Depends(auth)])
+def templates_page(msg: str = '', bad: int = 0):
+    rows = ''.join(f"<tr><td>{E(n)}</td><td><a href='/wizard-templates/file/{E(n)}'>λήψη</a></td><td><form method=post action='/wizard-templates/{E(n)}/delete' style='display:inline'><button class=danger>Διαγραφή</button></form></td></tr>" for n in wizexam.list_templates())
+    fields = ''.join(f"<tr><td><code>{{{{{E(k)}}}}}</code></td><td>{E(t)}</td></tr>" for k, t in wizexam.FIELDS)
+    note = (f"<div class='adm adm-{'warning' if bad else 'success'}'><p class=adm-t>{E(msg)}</p></div>" if msg else '')
+    body = (f"<h2>Πρότυπα Word σχολείου</h2>{note}<p>Ανεβάζεις το δικό σου διαγώνισμα του σχολείου ως πρότυπο: ο wizard γεμίζει τα πεδία και βάζει τα ερωτήματα στο σημείο που θα του δείξεις.</p>"
+            "<ol><li>Άνοιξε το έγγραφο του σχολείου στο Word και αποθήκευσε ως <b>Έγγραφο Word (*.docx)</b>.</li>"
+            "<li>Γράψε στη θέση κάθε στοιχείου το πεδίο του πίνακα από κάτω (π.χ. <code>{{ΤΙΤΛΟΣ}}</code>), και σε <b>δική του παράγραφο</b> το <code>{{ΕΡΩΤΗΜΑΤΑ}}</code> εκεί που θα μπουν τα ερωτήματα.</li>"
+            "<li>Ανέβασέ το εδώ. Μπορείς να δοκιμάσεις πρώτα το <a href='/wizard-templates/sample.docx'>ενσωματωμένο πρότυπο</a> ως υπόδειγμα.</li></ol>"
+            f"<div class=scroll><table><tr><th>Πεδίο</th><th>Τι μπαίνει</th></tr>{fields}<tr><td><code>{{{{ΕΡΩΤΗΜΑΤΑ}}}}</code></td><td>Τα ερωτήματα (ΘΕΜΑ Α, Β… με εικόνες/κείμενο και μονάδες)</td></tr></table></div>"
+            "<p><small>Τα πεδία δουλεύουν και σε κεφαλίδα/υποσέλιδο και σε πίνακες. Το <code>{{ΕΡΩΤΗΜΑΤΑ}}</code> πρέπει να είναι στο κυρίως σώμα (όχι μέσα σε πίνακα). Αν ένα πεδίο έχει μορφοποίηση μόνο σε μέρος του, η παράγραφος παίρνει τη μορφή του πρώτου γράμματος.</small></p>"
+            "<form method=post action='/wizard-templates/upload' enctype='multipart/form-data'><fieldset><legend>Ανέβασμα προτύπου</legend>"
+            "<input type=file name=file accept='.docx' class=r-file> <button class=primary>Ανέβασμα</button></fieldset></form>"
+            f"<h3>Διαθέσιμα πρότυπα</h3><div class=scroll><table><tr><th>Όνομα</th><th></th><th></th></tr><tr><td>ενσωματωμένο</td><td><a href='/wizard-templates/sample.docx'>λήψη</a></td><td></td></tr>{rows}</table></div>"
+            "<p><a class=btn href='/wizard'>← Wizard</a></p>")
+    return page('Πρότυπα Word', body)
+
+
+@router.get('/wizard-templates/sample.docx', dependencies=[Depends(auth)])
+def template_sample():
+    return Response(wizexam.default_template(), media_type=wizexam.DOCX, headers={'Content-Disposition': 'attachment; filename="protypo-diagonismatos.docx"'})
+
+
+@router.get('/wizard-templates/file/{name}', dependencies=[Depends(auth)])
+def template_file(name: str):
+    p = wizexam.tpl_dir() / name
+    if not wizexam.tpl_name_ok(name) or not p.is_file() or p.is_symlink(): raise HTTPException(404)
+    return Response(p.read_bytes(), media_type=wizexam.DOCX, headers={'Content-Disposition': f'attachment; filename="{name}"'})
+
+
+@router.post('/wizard-templates/upload', dependencies=[Depends(auth)])
+async def template_upload(request: Request):
+    same_origin(request); f = await request.form(); up = f.get('file')
+    from urllib.parse import quote
+    def back(msg, bad=0): return RedirectResponse(f'/wizard-templates?msg={quote(msg)}&bad={bad}', status_code=303)
+    if not hasattr(up, 'read') or not getattr(up, 'filename', ''): return back('Δεν επιλέχθηκε αρχείο.', 1)
+    name = re.sub(r'[^A-Za-z0-9_.-]+', '_', pathlib.Path(up.filename).stem).strip('._-')[:50] or 'protypo'; name += '.docx'
+    data = await up.read(wizexam.MAX_TPL + 1); ok, msg, found, mark = wizexam.check_template(data)
+    if not ok: return back(msg, 1)
+    d = wizexam.tpl_dir(); d.mkdir(parents=True, exist_ok=True); (d / name).write_bytes(data)
+    out = f"Αποθηκεύτηκε ως «{name}». Πεδία που βρέθηκαν: {', '.join(found) or 'κανένα'}."
+    if not mark: out += ' ΠΡΟΣΟΧΗ: λείπει το {{ΕΡΩΤΗΜΑΤΑ}}· τα ερωτήματα θα μπουν στο τέλος του εγγράφου.'
+    return back(out, 0 if mark else 1)
+
+
+@router.post('/wizard-templates/{name}/delete', dependencies=[Depends(auth)])
+def template_delete(request: Request, name: str):
+    same_origin(request); p = wizexam.tpl_dir() / name
+    if not wizexam.tpl_name_ok(name) or not p.is_file(): raise HTTPException(404)
+    p.unlink(); return RedirectResponse('/wizard-templates?msg=' + __import__('urllib.parse').parse.quote('Διαγράφηκε.'), status_code=303)

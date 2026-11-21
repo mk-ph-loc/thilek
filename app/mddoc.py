@@ -130,10 +130,13 @@ def table_widths(tb, cells, nc, total=6.6):
         for row in tb.rows: row.cells[ci].width = Inches(total * fr[ci] / fs)
         tb.columns[ci].width = Inches(total * fr[ci] / fs)
 
-def md_to_docx(c, md_text, title=''):
-    doc = Document()
-    for s in doc.sections: s.left_margin = s.right_margin = Inches(0.9); s.top_margin = s.bottom_margin = Inches(0.8)
-    st = doc.styles['Normal']; st.font.name = 'Calibri'; st.font.size = Pt(11); st.element.rPr.rFonts.set(qn('w:eastAsia'), 'Calibri')
+def md_to_docx(c, md_text, title='', doc=None):
+    """Markdown -> .docx (bytes). Με doc=<Document> γράφει στο τέλος του υπάρχοντος εγγράφου (πρότυπο) και δεν το αποθηκεύει (επιστρέφει None)."""
+    own = doc is None
+    if own:
+        doc = Document()
+        for s in doc.sections: s.left_margin = s.right_margin = Inches(0.9); s.top_margin = s.bottom_margin = Inches(0.8)
+        st = doc.styles['Normal']; st.font.name = 'Calibri'; st.font.size = Pt(11); st.element.rPr.rFonts.set(qn('w:eastAsia'), 'Calibri')
     sm = re.search(r'^\[thilek-style\]:\s*#(\w+)\s*$', md_text, re.M)          # αόρατος ορισμός από την εξαγωγή λύσεων: χρώματα επικεφαλίδων
     hcol = STYLES[sm.group(1)]['doc'] if sm and sm.group(1) in STYLES else None
     md_text, maths = protect(md_text, only_tex=True)          # $..$ με \ ^ _ ή γράμματα -> κείμενο· ποσά «$5» μένουν όπως είναι
@@ -174,6 +177,7 @@ def md_to_docx(c, md_text, title=''):
                 table_widths(tb, cells, nc)
             cells = None
         i += 1
+    if not own: return None
     buf = io.BytesIO(); doc.save(buf); return buf.getvalue()
 
 # ---------- αποθήκευση ----------

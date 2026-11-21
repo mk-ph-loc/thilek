@@ -4,10 +4,10 @@ import datetime, io, json, re, zipfile
 
 FORMATS = (('excel', 'Excel (πίνακας ερωτημάτων με συνδέσμους σε αρχεία)'), ('md', 'Markdown έγγραφο (/docs, από εκεί και Word)'),
            ('htmldoc', 'Έγγραφο HTML για εκτύπωση (εικόνες ερωτημάτων)'), ('reveal', 'Reveal.js (λύσεις εκπαιδευτικού)'), ('student', 'HTML μαθητή (λύσεις εκπαιδευτικού)'),
-           ('moodle', 'Moodle XML (quiz από λύσεις εκπαιδευτικού)'), ('merge', 'PDF συγχώνευσης θεμάτων'))
+           ('moodle', 'Moodle XML (quiz από λύσεις εκπαιδευτικού)'), ('merge', 'PDF συγχώνευσης θεμάτων'), ('exam', 'Διαγώνισμα/τεστ Word (πρότυπο σχολείου)'))
 FORMAT_KEYS = tuple(k for k, _ in FORMATS)
 NEEDS_SOL = ('reveal', 'student', 'moodle')                  # θέλουν αρχείο λύσης εκπαιδευτικού
-POINTS_HONORED = ('excel', 'md')                             # οι υπόλοιπες παίρνουν μονάδες από τα αρχεία/βάση
+POINTS_HONORED = ('excel', 'md', 'exam')                             # οι υπόλοιπες παίρνουν μονάδες από τα αρχεία/βάση
 UNSEL = (('omit', 'Να μην εμφανιστούν καθόλου'), ('hide', 'Κρυφά (μπαίνουν στο αρχείο αλλά δεν φαίνονται)'),
          ('append', 'Στο τέλος, μη εμφανιζόμενα'), ('manual', 'Θα διαλέξω εγώ ποια θα εμφανιστούν'))
 ORDERS = (('item', 'Θέμα και ερώτημα'), ('points', 'Μονάδες (φθίνουσα)'), ('qtype', 'Τύπος ερωτήματος'), ('manual', 'Χειροκίνητη σειρά (↑↓)'))
@@ -17,7 +17,8 @@ CRITERIA_KEYS = tuple(k for k, _ in CRITERIA)
 
 DEFAULT = {'criteria': {}, 'members': [], 'mode': 'merge', 'gran': 'item', 'order': 'item', 'points': {}, 'target': None, 'unsel': 'omit', 'manual_sel': [],
            'format': 'excel', 'title': 'Αναφορά ασκήσεων', 'style': 'kids', 'sx': [], 'hide': True, 'mdmode': 'image', 'numbering': 'new',
-           'link_prefix': 'pdf/', 'bundle': False, 'store': 'download', 'preview': True}
+           'link_prefix': 'pdf/', 'bundle': False, 'store': 'download', 'preview': True,
+           'x_school': '', 'x_class': '', 'x_date': '', 'x_dur': '', 'x_sub': '', 'x_notes': '', 'x_course': '', 'x_tpl': 'default', 'x_ver': 'student', 'x_grp': 'item', 'x_mode': 'image'}
 
 
 def key(item, code): return f'{item}|{code}'
@@ -42,6 +43,10 @@ def load_state(raw):
     if st['order'] not in dict(ORDERS): st['order'] = 'item'
     if st['mode'] not in ('merge', 'each'): st['mode'] = 'merge'
     if st['gran'] not in ('item', 'question'): st['gran'] = 'item'
+    if st['x_ver'] not in ('student', 'teacher', 'both'): st['x_ver'] = 'student'
+    if st['x_grp'] not in ('item', 'qtype', 'none'): st['x_grp'] = 'item'
+    if st['x_mode'] not in ('image', 'text', 'both'): st['x_mode'] = 'image'
+    for k in ('x_school', 'x_class', 'x_date', 'x_dur', 'x_sub', 'x_notes', 'x_course', 'x_tpl'): st[k] = st[k][:300]
     if st['store'] not in ('download', 'server', 'publish'): st['store'] = 'download'
     return st
 
@@ -67,7 +72,7 @@ def scale_points(pts, target, step=1.0):
     return {k: round(n * step, 6) for k, n in fl.items()}
 
 
-ROW_SQL = """SELECT q.id qid,q.item_id,q.code,q.points,q.qtype,q.has_image,q.geo IS NOT NULL has_geo,i.iep_yli,i.position,i.course_code,i.statement_path,i.solution_path,
+ROW_SQL = """SELECT q.id qid,q.item_id,q.code,q.points,q.qtype,q.has_image,q.geo IS NOT NULL has_geo,q.sol_geo IS NOT NULL has_geo_sol,i.iep_yli,i.position,i.course_code,i.statement_path,i.solution_path,
     EXISTS (SELECT 1 FROM qsolution s WHERE s.item_id=q.item_id AND s.qcode=q.code) has_sol,
     (SELECT s.status FROM qsolution s WHERE s.item_id=q.item_id AND s.qcode=q.code) sol_status,
     (SELECT s.relpath FROM qsolution s WHERE s.item_id=q.item_id AND s.qcode=q.code) sol_rel
@@ -142,6 +147,13 @@ def checks(es, st):
         w.append('Αυτή η μορφή δεν εφαρμόζει τις προσαρμοσμένες μονάδες· χρησιμοποιεί τις μονάδες των αρχείων/βάσης (Excel και Markdown τις εφαρμόζουν).')
     if st['format'] == 'merge' and any(e['vis'] != 'show' for e in es): w.append('Το PDF συγχώνευσης περιέχει ολόκληρα θέματα· οι ρυθμίσεις «κρυφά/στο τέλος» δεν εφαρμόζονται.')
     if st['format'] in ('reveal', 'student', 'moodle') and any(e['vis'] == 'hidden' for e in es): w.append('Στις λύσεις εκπαιδευτικού τα «κρυφά» δεν εμφανίζονται (παραλείπονται)· τα «στο τέλος» μπαίνουν στο τέλος.')
+    if st['format'] == 'exam':
+        from . import wizexam
+        if st['x_tpl'] != 'default' and st['x_tpl'] not in wizexam.list_templates(): w.append(f"Το πρότυπο «{st['x_tpl']}» δεν υπάρχει πια στον φάκελο προτύπων· θα εμφανιστεί σφάλμα. Διάλεξε άλλο ή το ενσωματωμένο.")
+        if st['x_ver'] in ('teacher', 'both'):
+            no = [f"{e['item']}/{e['code']}" for e in shown if not e['row'].get('has_geo_sol')]
+            if no: w.append(f"Έκδοση καθηγητή: {len(no)} ερωτήματα δεν έχουν εικόνα λύσης ΙΕΠ ({', '.join(no[:8])}).")
+        if not st['x_school'] and not st['x_notes']: w.append('Δεν έχεις συμπληρώσει σχολείο ή οδηγίες· τα αντίστοιχα πεδία του προτύπου θα μείνουν κενά.')
     if st['mode'] == 'each' and st['format'] not in ('reveal', 'student'): w.append('Το «ένα-ένα» ισχύει μόνο για Reveal.js και HTML μαθητή· σε αυτή τη μορφή θα βγει ένα αρχείο.')
     if st['store'] == 'publish' and st['format'] not in ('reveal', 'student', 'htmldoc'): w.append('Η δημοσίευση αφορά σελίδες HTML (Reveal.js, HTML μαθητή, HTML εκτύπωσης)· αυτή η μορφή δεν μπορεί να δημοσιευτεί.')
     return w
