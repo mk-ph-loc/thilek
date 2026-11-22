@@ -3,9 +3,9 @@
 (2) τα νέα αρχεία δεν αντικαθιστούν ποτέ υπάρχοντα· (3) τα πρωτότυπα (PDF/Word ΙΕΠ, βιβλίο κ.λπ.) διαβάζονται αλλά δεν αλλάζουν: το split/merge γράφει σε φάκελο `07_EXAGOGES`
 και η μετονομασία «σε αντίγραφα» αντιγράφει εκεί· η μετονομασία επί τόπου υπακούει στις προστασίες του file browser· (4) όλα μέσα στον data_root, με καταγραφή στον πίνακα `fileops`."""
 from urllib.parse import quote
-import html, os, re, shutil
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+import html, os, pathlib, re, shutil, tempfile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from . import config
 from .main_auth import auth
 from .review import db, page, same_origin
@@ -18,6 +18,9 @@ MAX_PARTS = 200
 MAX_PAGES = 5000
 MAX_FILES = 400
 OUT = '07_EXAGOGES'
+STAGE = '_PROSORINO'                                  # προσωρινός φάκελος στη ρίζα δεδομένων: δικά σου αρχεία + αντίγραφα θεμάτων για συγχώνευση/μετονομασία
+STAGE_FILES = 200
+STAGE_BYTES = 1024 * 1024 * 1024
 TABS = (('split', 'Χωρισμός PDF'), ('merge', 'Συγχώνευση PDF'), ('rename', 'Μετονομασία με μοτίβο'))
 TOKEN = re.compile(r'\{([a-z]+)(?::(0?\d{1,2})d)?\}')
 SPLIT_KEYS = ('name', 'n', 'from', 'to')
@@ -68,9 +71,17 @@ def parse_ranges(spec, n):
     return out
 
 
+def hint_of(rels):
+    """Πρώτο αρχείο που δεν είναι του προσωρινού φακέλου: από αυτό βγαίνει το προεπιλεγμένο μάθημα εξόδου."""
+    for r in rels:
+        if r and clean_rel(r).split('/')[0] != STAGE: return r
+    return ''
+
+
 def out_dir(rel, hint=''):
     """(απόλυτη, σχετική) διαδρομή φακέλου εξόδου: πρέπει να είναι μέσα σε φάκελο 07_EXAGOGES. Κενό -> <μάθημα>/07_EXAGOGES/files από το hint."""
     rel = clean_rel(rel)
+    if rel.split('/')[0] == STAGE: raise Refuse('Μη επιτρεπτός φάκελος εξόδου', ['Ο προσωρινός φάκελος δεν είναι φάκελος εξόδου· διάλεξε φάκελο μέσα σε <b>07_EXAGOGES</b>.'], 422)
     if not rel:
         h = clean_rel(hint).split('/')[0] if hint else ''
         if not h: raise Refuse('Λείπει φάκελος εξόδου', ['Δώσε φάκελο εξόδου μέσα σε <b>07_EXAGOGES</b>, π.χ. <code>B-ILEKTROTECHNIA/07_EXAGOGES/files</code>.'], 422)
@@ -107,7 +118,7 @@ def _status(base, names, outp):
 
 
 def split_plan(src, spec, pat, outdir):
-    sp, srel, n = pdf_info(src); op, orel = out_dir(outdir, srel)
+    sp, srel, n = pdf_info(src); op, orel = out_dir(outdir, hint_of([srel]))
     try: check_pattern(pat, SPLIT_KEYS); parts = parse_ranges(spec, n)
     except ValueError as e: raise Refuse('Μη έγκυρες ρυθμίσεις', [E(str(e))], 422)
     stem = os.path.basename(srel)[:-4]; names = set(); items = []
@@ -123,7 +134,7 @@ def merge_plan(srcs, outname, outdir, order='list'):
     infos = [pdf_info(s) for s in dict.fromkeys(srcs)]
     if order == 'name': infos.sort(key=lambda x: natkey(os.path.basename(x[1])))
     elif order == 'path': infos.sort(key=lambda x: natkey(x[1]))
-    op, orel = out_dir(outdir, infos[0][1]); name = (outname or 'merged.pdf').strip()
+    op, orel = out_dir(outdir, hint_of([i[1] for i in infos])); name = (outname or 'merged.pdf').strip()
     if not name.lower().endswith('.pdf'): name += '.pdf'
     st, msg = _status(name, set(), op); total = sum(i[2] for i in infos)
     if total > MAX_PAGES: st, msg = 'bad', f'Πάνω από {MAX_PAGES} σελίδες συνολικά ({total}).'
@@ -148,7 +159,7 @@ def rename_plan(srcs, mode, find, repl, rx, tpl, start, width, outdir):
         files.append((p, rel))
     files.sort(key=lambda x: natkey(os.path.basename(x[1])))
     copy = mode == 'copy'
-    if copy: op, orel = out_dir(outdir, files[0][1])
+    if copy: op, orel = out_dir(outdir, hint_of([f[1] for f in files]))
     olds = {rel.lower() for _, rel in files}; names = {}; seen = set()
     for i, (p, rel) in enumerate(files):
         base = os.path.basename(rel); stem, dot, ext = base.rpartition('.')
@@ -233,7 +244,7 @@ def apply_plan(plan, confirm=False):
 
 # ---------- σελίδες ----------
 CSS = (FB.CSS + "<style>.fotabs{display:flex;gap:.4rem;margin:.4rem 0 .8rem}.fotabs a{padding:.3rem .7rem;border:1px solid var(--border);border-radius:var(--radius);text-decoration:none}.fotabs a.on{background:var(--accent);color:#fff}"
-       ".fol{max-height:22rem;overflow:auto;border:1px solid var(--border);border-radius:var(--radius);padding:.3rem .6rem}.fol label{display:block}.st-ok{color:#2e9d57}.st-warn{color:#c47f00}.st-bad,.st-blocked,.st-exists,.st-dup{color:#d33}.st-same{color:var(--muted)}</style>")
+       ".fol{max-height:22rem;overflow:auto;border:1px solid var(--border);border-radius:var(--radius);padding:.3rem .6rem}.fol label{display:block}.fol label[hidden]{display:none}.fobar{margin:.4rem 0}.muted{color:var(--muted)}.st-ok{color:#2e9d57}.st-warn{color:#c47f00}.st-bad,.st-blocked,.st-exists,.st-dup{color:#d33}.st-same{color:var(--muted)}</style>")
 ICON = {'ok': '✔', 'warn': '⚠', 'bad': '✖', 'blocked': '🔒', 'exists': '✖', 'dup': '✖', 'same': '–'}
 
 
@@ -258,33 +269,81 @@ def listing(d, pdf_only):
 def hidden(pairs): return ''.join(f"<input type=hidden name='{E(k)}' value='{E(v)}'>" for k, v in pairs)
 
 
+def stage_path(create=False):
+    p = os.path.join(root(), STAGE)
+    if create: os.makedirs(p, exist_ok=True)
+    return p
+
+
+def stage_list():
+    """[(όνομα, μέγεθος)] των αρχείων του προσωρινού φακέλου, σε φυσική σειρά."""
+    p = stage_path()
+    if not os.path.isdir(p): return []
+    return [(n, os.path.getsize(os.path.join(p, n))) for n in sorted((n for n in os.listdir(p) if not n.startswith('.') and os.path.isfile(os.path.join(p, n))), key=natkey)]
+
+
+def unique_name(dirp, name):
+    if not os.path.exists(os.path.join(dirp, name)): return name
+    stem, dot, ext = name.rpartition('.')
+    if not dot: stem, ext = name, ''
+    i = 2
+    while os.path.exists(os.path.join(dirp, f"{stem}_{i}{'.' + ext if ext else ''}")): i += 1
+    return f"{stem}_{i}{'.' + ext if ext else ''}"
+
+
+def out_choices():
+    """Προτεινόμενοι φάκελοι εξόδου: <μάθημα>/07_EXAGOGES/files για κάθε μάθημα και υπάρχοντες φάκελοι μέσα σε 07_EXAGOGES."""
+    r = root(); out = []
+    try: courses = sorted((d for d in os.listdir(r) if os.path.isdir(os.path.join(r, d)) and not d.startswith(('.', '_'))), key=natkey)
+    except OSError: courses = []
+    out += [f'{c}/{OUT}/files' for c in courses]
+    out += [f for f in folders() if OUT in f.split('/') and f not in out]
+    return out
+
+
 def form_page(tab, d, msg=''):
     tabs = '<div class=fotabs>' + ''.join(f"<a class='{'on' if k == tab else ''}' href='/fileops?tab={k}'>{E(t)}</a>" for k, t in TABS) + '</div>'
     opts = ''.join(f"<option value='{E(f)}'{' selected' if f == d else ''}>{E(f)}</option>" for f in folders())
     pick = (f"<form method=get action='/fileops' class=filters><input type=hidden name=tab value='{tab}'><label class=f>Φάκελος <select class=r-list name=dir><option value=''>— διάλεξε —</option>{opts}</select></label>"
             "<button>Φόρτωση αρχείων</button></form>")
-    head = f"<h2>Εργαλεία αρχείων</h2>{f'<div class=note>{E(msg)}</div>' if msg else ''}{tabs}{pick}"
-    if not d: return page('Εργαλεία αρχείων', CSS + head + "<p><i>Διάλεξε φάκελο και πάτα «Φόρτωση αρχείων».</i></p>")
-    rel, names = listing(d, tab != 'rename')
-    if not names: return page('Εργαλεία αρχείων', CSS + head + '<p><i>Δεν υπάρχουν κατάλληλα αρχεία σε αυτόν τον φάκελο.</i></p>')
+    staged = stage_list(); sbytes = sum(sz for _, sz in staged)
+    clear = (f"<form method=post action='/fileops/stage/clear' data-confirm='Διαγραφή όλων των αρχείων του προσωρινού φακέλου;'><input type=hidden name=tab value='{tab}'><input type=hidden name=dir value='{E(d)}'><button class=danger>Άδειασμα προσωρινού</button></form>" if staged else '')
+    up = (f"<fieldset><legend>Προσωρινός φάκελος ({len(staged)} αρχεία, {human(sbytes)})</legend>"
+          f"<form method=post action='/fileops/stage/upload' enctype='multipart/form-data' class=filters><input type=hidden name=tab value='{tab}'><input type=hidden name=dir value='{E(d)}'>"
+          "<label class=f>Δικά μου αρχεία <input type=file name=files multiple class=r-file></label><button>Ανέβασμα στον προσωρινό</button></form>"
+          f"{clear}<p><small>Εδώ ανεβάζεις δικά σου αρχεία (εξώφυλλο, σκαναρισμένες σελίδες) ή αντιγράφεις θέματα από τον φάκελο· εμφανίζονται παρακάτω και μπαίνουν στη συγχώνευση/μετονομασία όπως τα υπόλοιπα. Δεν είναι μέρος της βάσης ούτε του rebuild.</small></p></fieldset>")
+    head = f"<h2>Εργαλεία αρχείων</h2>{f'<div class=note>{E(msg)}</div>' if msg else ''}{tabs}{pick}{up}"
+    rel, names = listing(d, tab != 'rename') if d else ('', [])
+    snames = [(n, sz) for n, sz in staged if tab == 'rename' or n.lower().endswith('.pdf')]
+    if not names and not snames:
+        return page('Εργαλεία αρχείων', CSS + head + ("<p><i>Δεν υπάρχουν κατάλληλα αρχεία σε αυτόν τον φάκελο.</i></p>" if d else "<p><i>Διάλεξε φάκελο και πάτα «Φόρτωση αρχείων» ή ανέβασε δικά σου αρχεία.</i></p>"))
     kind = 'radio' if tab == 'split' else 'checkbox'
-    boxes = ''.join(f"<label><input type={kind} {'class=r-opt ' if kind == 'checkbox' else ''}name=src value='{E((rel + '/' if rel else '') + n)}'> {E(n)}</label>" for n in names)
-    allb = "<label><input type=checkbox data-all='src'> επιλογή όλων</label>" if kind == 'checkbox' else ''
+    def lab(v, text, extra=''): return f"<label><input type={kind} {'class=r-opt ' if kind == 'checkbox' else ''}name=src value='{E(v)}'> {E(text)}{extra}</label>"
+    boxes = ''.join(lab((rel + '/' if rel else '') + n, n) for n in names)
+    sboxes = ''.join(lab(f'{STAGE}/{n}', n, f' <small>({human(sz)})</small>') for n, sz in snames)
+    allb = "<label><input type=checkbox data-all='src'> επιλογή όλων (όσων φαίνονται)</label>" if kind == 'checkbox' else ''
+    flt = ("<div class=fobar><label class=f>Φίλτρο <input type=search id=foFilter size=32 autocomplete=off placeholder='π.χ. ohm 2019  (κενό = και τα δύο)'></label>"
+           + ("<label class='f chk'><input type=checkbox id=foAuto> επιλογή των εμφανιζόμενων καθώς πληκτρολογώ</label> <button type=button id=foAll>✓ εμφανιζόμενα</button> <button type=button id=foNone>✗ εμφανιζόμενα</button>" if kind == 'checkbox' else '')
+           + " <span id=foStat class=muted></span></div>")
     if tab == 'split':
         opt = ("<label class=f>Σελίδες <input class=r-txt name=spec size=30 placeholder='1-3, 4-6, 8  ή  κάθε 5'></label> <label class=f>Όνομα αρχείων <input class=r-txt name=pat size=34 value='{name}_{n:02d}_σελ{from}-{to}'></label>"
                "<p><small>Πεδία: {name} όνομα πηγής, {n} αύξων, {from} {to} σελίδες. Η πηγή δεν αλλάζει.</small></p>")
     elif tab == 'merge':
-        opt = ("<label class=f>Όνομα εξόδου <input class=r-txt name=outname size=30 value='merged.pdf'></label> <label class=f>Σειρά <select class=r-list name=order><option value=name>αλφαβητικά (φυσική)</option><option value=list>όπως στη λίστα</option></select></label>"
-               "<p><small>Σελιδοδείκτης ανά αρχείο. Τα πρωτότυπα δεν αλλάζουν.</small></p>")
+        opt = ("<label class=f>Όνομα εξόδου <input class=r-txt name=outname size=30 value='merged.pdf'></label> <label class=f>Σειρά <select class=r-list name=order><option value=name>αλφαβητικά (φυσική, με βάση το όνομα αρχείου)</option><option value=list>όπως στη λίστα (πρώτα φάκελος, μετά προσωρινά)</option></select></label>"
+               "<p><small>Σελιδοδείκτης ανά αρχείο. Τα πρωτότυπα δεν αλλάζουν. Για να μπει δικό σου αρχείο πρώτο, ονόμασέ το π.χ. <code>00_εξώφυλλο.pdf</code>.</small></p>")
     else:
         opt = ("<fieldset><legend>Πού</legend><label class='f chk'><input type=radio name=mode value=copy checked> σε αντίγραφα (στον φάκελο εξόδου· λειτουργεί και για πρωτότυπα)</label>"
-               "<label class='f chk'><input type=radio name=mode value=inplace> επί τόπου (με τις προστασίες του file browser)</label></fieldset>"
+               "<label class='f chk'><input type=radio name=mode value=inplace> επί τόπου (με τις προστασίες του file browser· τα προσωρινά αρχεία μετονομάζονται ελεύθερα)</label></fieldset>"
                "<label class=f>Βρες <input class=r-txt name=find size=18></label> <label class=f>Αντικατάστησε με <input class=r-txt name=repl size=18></label> <label class='f chk'><input type=checkbox name=rx value=1> κανονική έκφραση</label>"
                "<label class=f>Μοτίβο <input class=r-txt name=tpl size=24 value='{name}'></label> <label class=f>Αρχή αρίθμησης <input class=r-txt name=start size=5 value='1'></label> <label class=f>Ψηφία <input class=r-txt name=width size=3 value='2'></label>"
                "<p><small>Μοτίβο: {name} (το όνομα μετά το «βρες/αντικατάστησε»), {n} αρίθμηση, π.χ. <code>θέμα_{n}_{name}</code>. Η επέκταση διατηρείται.</small></p>")
-    outf = f"<label class=f>Φάκελος εξόδου (μέσα σε {OUT}) <input class=r-txt name=outdir size=40 placeholder='κενό = &lt;μάθημα&gt;/{OUT}/files'></label>"
+    dl = '<datalist id=fodirs>' + ''.join(f"<option value='{E(x)}'>" for x in out_choices()) + '</datalist>'
+    outf = f"<label class=f>Φάκελος εξόδου (μέσα σε {OUT}) <input class=r-txt name=outdir size=44 list=fodirs placeholder='κενό = &lt;μάθημα&gt;/{OUT}/files (όχι όταν όλα τα αρχεία είναι προσωρινά)'></label>{dl}"
+    left = f"<h3>Αρχεία στον φάκελο «{E(rel)}»</h3>{allb}<div class=fol>{boxes or '<i>(κανένα — διάλεξε φάκελο)</i>'}</div>" if d else ''
+    right = (f"<h3>Προσωρινός φάκελος</h3><div class=fol>{sboxes}</div><p class=filters><button formaction='/fileops/stage/delete' formmethod=post>Διαγραφή επιλεγμένων προσωρινών</button> <small>(μόνο όσα είναι στον προσωρινό)</small></p>" if snames else '')
+    cp = "<p><button formaction='/fileops/stage/copy' formmethod=post>Αντιγραφή επιλεγμένων του φακέλου στον προσωρινό</button></p>" if d and names else ''
     body = (head + f"<form method=post action='/fileops/preview'><input type=hidden name=tab value='{tab}'><input type=hidden name=dir value='{E(rel)}'>"
-            f"<h3>Αρχεία στον φάκελο «{E(rel)}»</h3>{allb}<div class=fol>{boxes}</div>{opt}{outf}<p><button class=primary>Προεπισκόπηση (δεν αλλάζει τίποτα)</button></p></form>")
+            f"{flt}{left}{cp}{right}{opt}{outf}<p><button class=primary>Προεπισκόπηση (δεν αλλάζει τίποτα)</button></p></form><script src='/static/fileops.js'></script>")
     return page('Εργαλεία αρχείων', CSS + body)
 
 
@@ -337,3 +396,111 @@ async def fileops_apply(request: Request):
     msg, _ = apply_plan(plan, bool(f.get('confirm')))
     from urllib.parse import quote
     return RedirectResponse(f"/fileops?tab={quote(str(f.get('tab')))}&dir={quote(str(f.get('dir') or ''))}&msg={quote(msg)}", status_code=303)
+
+
+# ---------- προσωρινός φάκελος ----------
+JS = (pathlib.Path(__file__).parent / 'static' / 'fileops.js').read_text(encoding='utf-8')
+
+
+@router.get('/static/fileops.js', include_in_schema=False)
+def fileops_js(): return Response(JS, media_type='application/javascript')
+
+
+def back_to(f, msg):
+    return RedirectResponse(f"/fileops?tab={quote(str(f.get('tab') or 'merge'))}&dir={quote(str(f.get('dir') or ''))}&msg={quote(msg)}", status_code=303)
+
+
+def stage_check(add_files, add_bytes):
+    cur = stage_list()
+    if len(cur) + add_files > STAGE_FILES: raise Refuse('Ο προσωρινός φάκελος γέμισε', [f'Όριο {STAGE_FILES} αρχεία· άδειασέ τον ή σβήσε αρχεία.'], 422)
+    if sum(sz for _, sz in cur) + add_bytes > STAGE_BYTES: raise Refuse('Ο προσωρινός φάκελος γέμισε', [f'Όριο {human(STAGE_BYTES)}· άδειασέ τον ή σβήσε αρχεία.'], 422)
+
+
+@router.post('/fileops/stage/upload', dependencies=[Depends(auth)])
+@handle
+async def stage_upload(request: Request, tab: str = Form('merge'), dir: str = Form(''), files: list[UploadFile] = File(...)):
+    same_origin(request); sp = stage_path(True); c = db(); ok, bad = [], []; tmps = []; total = 0
+    try:
+        for f in files:
+            name = os.path.basename((f.filename or '').replace('\\', '/')); ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
+            why = valid_name(name)
+            if why: bad.append(f'«{name or "(χωρίς όνομα)"}»: {why}'); continue
+            if ext not in ALLOWED_EXT or ext == 'zip': bad.append(f'«{name}»: ο τύπος .{ext} δεν επιτρέπεται.'); continue
+            fd, tmp = tempfile.mkstemp(prefix='.upload-', dir=sp); tmps.append(tmp); size = 0; head = b''
+            with os.fdopen(fd, 'wb') as out:
+                while True:
+                    ch = await f.read(1 << 20)
+                    if not ch: break
+                    if not head: head = ch[:5]
+                    size += len(ch)
+                    if size > FB.MAX_UPLOAD: break
+                    out.write(ch)
+            if size > FB.MAX_UPLOAD: bad.append(f'«{name}»: ξεπερνά το όριο {human(FB.MAX_UPLOAD)}.'); continue
+            if size == 0: bad.append(f'«{name}»: άδειο αρχείο.'); continue
+            if ext == 'pdf' and head[:4] != b'%PDF': bad.append(f'«{name}»: δεν είναι πραγματικό PDF.'); continue
+            try: stage_check(len(ok) + 1, total + size); _space(sp, total + size)
+            except Refuse as e: bad.append(f'«{name}»: ' + ' '.join(e.reasons)); continue
+            nm = unique_name(sp, name)
+            while nm in [o[0] for o in ok]: nm = unique_name(sp, nm[:-len(ext) - 1] + '_x.' + ext)
+            ok.append((nm, tmp, size)); total += size
+        for nm, tmp, size in ok:
+            os.replace(tmp, os.path.join(sp, nm)); tmps.remove(tmp); log(c, 'stage-upload', f'{STAGE}/{nm}', human(size))
+        c.commit()
+    finally:
+        for t in tmps:
+            if os.path.exists(t): os.unlink(t)
+        c.close()
+    if not ok: raise Refuse('Δεν ανέβηκε τίποτα', [E(x) for x in bad] or ['Δεν διάλεξες αρχεία.'], 422)
+    return back_to({'tab': tab, 'dir': dir}, f'Ανέβηκαν {len(ok)} αρχεία στον προσωρινό φάκελο.' + (f" Απορρίφθηκαν {len(bad)}: " + ' '.join(bad) if bad else ''))
+
+
+@router.post('/fileops/stage/copy', dependencies=[Depends(auth)])
+@handle
+async def stage_copy(request: Request):
+    same_origin(request); f = await request.form(); srcs = [str(x) for x in f.getlist('src') if clean_rel(str(x)).split('/')[0] != STAGE]
+    if not srcs: raise Refuse('Δεν επιλέχθηκαν αρχεία του φακέλου', ['Τσέκαρε αρχεία από τη λίστα του φακέλου (όχι από τα προσωρινά).'], 422)
+    sp = stage_path(True); c = db(); done = 0; total = 0
+    try:
+        plan = []
+        for s in dict.fromkeys(srcs):
+            p, rel = resolve(s)
+            if not os.path.isfile(p) or in_trash(rel): raise Refuse('Μη έγκυρο αρχείο', [f'Το «{E(rel)}» δεν είναι αρχείο του φακέλου δεδομένων.'], 422)
+            ext = rel.rsplit('.', 1)[-1].lower() if '.' in rel else ''
+            if ext not in ALLOWED_EXT or classify(rel, False)['level'] == 'block' and ext not in ('pdf',): raise Refuse('Μη επιτρεπτό αρχείο', [f'Το «{E(rel)}» δεν αντιγράφεται.'], 422)
+            sz = os.path.getsize(p)
+            if sz > FB.MAX_UPLOAD: raise Refuse('Πολύ μεγάλο αρχείο', [f'Το «{E(rel)}» ξεπερνά τα {human(FB.MAX_UPLOAD)}.'], 422)
+            plan.append((p, rel, sz)); total += sz
+        stage_check(len(plan), total); _space(sp, total)
+        for p, rel, sz in plan:
+            nm = unique_name(sp, os.path.basename(rel))
+            with open(p, 'rb') as a, open(os.path.join(sp, nm), 'xb') as b: shutil.copyfileobj(a, b)
+            log(c, 'stage-copy', f'{STAGE}/{nm}', 'αντίγραφο από ' + rel); done += 1
+        c.commit()
+    finally: c.close()
+    return back_to(f, f'Αντιγράφηκαν {done} αρχεία στον προσωρινό φάκελο (τα πρωτότυπα δεν άλλαξαν).')
+
+
+@router.post('/fileops/stage/delete', dependencies=[Depends(auth)])
+@handle
+async def stage_delete(request: Request):
+    same_origin(request); f = await request.form(); names = [os.path.basename(str(x)) for x in f.getlist('src') if clean_rel(str(x)).split('/')[0] == STAGE]
+    if not names: raise Refuse('Δεν επιλέχθηκαν προσωρινά αρχεία', ['Τσέκαρε αρχεία από τη λίστα «Προσωρινός φάκελος».'], 422)
+    sp = stage_path(); c = db(); n = 0
+    try:
+        for nm in dict.fromkeys(names):
+            p = os.path.join(sp, nm)
+            if not nm.startswith('.') and os.path.isfile(p): os.unlink(p); log(c, 'stage-delete', f'{STAGE}/{nm}'); n += 1
+        c.commit()
+    finally: c.close()
+    return back_to(f, f'Διαγράφηκαν {n} προσωρινά αρχεία.')
+
+
+@router.post('/fileops/stage/clear', dependencies=[Depends(auth)])
+@handle
+async def stage_clear(request: Request):
+    same_origin(request); f = await request.form(); sp = stage_path(); c = db(); n = 0
+    try:
+        for nm, _ in stage_list(): os.unlink(os.path.join(sp, nm)); n += 1
+        log(c, 'stage-clear', STAGE, f'{n} αρχεία'); c.commit()
+    finally: c.close()
+    return back_to(f, f'Ο προσωρινός φάκελος άδειασε ({n} αρχεία).')

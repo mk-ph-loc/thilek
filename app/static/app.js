@@ -31,7 +31,7 @@
   }
   allBoxes.forEach(function (all) {
     var boxes = function () { return document.querySelectorAll('input[name="' + all.dataset.all + '"]'); };
-    all.addEventListener('click', function (e) { e.stopPropagation(); boxes().forEach(function (b) { b.checked = all.checked; }); count(); });
+    all.addEventListener('click', function (e) { e.stopPropagation(); boxes().forEach(function (b) { var l = b.closest('label'); if (!(l && l.hidden)) b.checked = all.checked; }); count(); });
     boxes().forEach(function (b) { b.addEventListener('change', count); });
   });
   document.addEventListener('click', function (e) {      // αγαπημένα: ★/☆ χωρίς ανανέωση σελίδας
