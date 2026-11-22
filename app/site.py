@@ -3,6 +3,7 @@
 Δεν έχει FastAPI. Δεδομένα χρήστη: επιβιώνουν του rebuild. Χωρίς ξένα κλειδιά (parent_id 0 = ρίζα), οπότε οι διαγραφές σβήνουν ρητά.
 Δεν υπάρχει δημοσίευση στο /p/ ούτε αναζήτηση (0.35)· τα ονόματα αρχείων της εξαγωγής είναι επίπεδα (χωρίς φακέλους) ώστε να μπορούν να περάσουν αργότερα από το publish.save_site."""
 import datetime, html, io, json, pathlib, re, zipfile
+from urllib.parse import quote
 from . import config, deck as D, deckexport as DX, deckmd, embed as EM, solexport as X
 from .mdmath import md_text, render_md
 
@@ -47,7 +48,7 @@ def slugify(s):
 
 
 def clean_slug(t):
-    t = re.sub(r'[^a-z0-9-]+', '-', (t or '').lower()).strip('-')[:50]
+    t = re.sub(r'[^a-z0-9-]+', '-', (t or '').lower()).strip('-')[:48].strip('-')
     if not t: return ''
     if t in RESERVED or t.startswith(('deck-', 'file-')): t = 'p-' + t
     return t
@@ -224,8 +225,9 @@ def safe_file(root, rel):
 
 
 def flat_name(rel, taken):
-    stem = re.sub(r'[^A-Za-z0-9._-]+', '-', pathlib.PurePosixPath(rel).stem).strip('-')[:40] or 'arxeio'; ext = pathlib.PurePosixPath(rel).suffix.lower(); n, nm = 1, f'file-{stem}{ext}'
-    while nm in taken and taken[nm] != rel: n += 1; nm = f'file-{stem}-{n}{ext}'
+    stem = re.sub(r'[^a-z0-9._-]+', '-', pathlib.PurePosixPath(rel).stem.lower()).strip('-')[:40] or 'arxeio'; ext = pathlib.PurePosixPath(rel).suffix.lower(); n, nm = 1, f'file-{stem}{ext}'
+    low = {k.lower(): v for k, v in taken.items()}                          # ίδιο όνομα με άλλα κεφαλαία θα συγκρουόταν σε Windows
+    while nm in low and low[nm] != rel: n += 1; nm = f'file-{stem}-{n}{ext}'
     return nm
 
 
@@ -234,11 +236,13 @@ class Ctx:
     """Κοινή κατάσταση απόδοσης. mode='export': σύνδεσμοι σε αρχεία zip· mode='preview': σύνδεσμοι στις διαδρομές /sites/<id>/…"""
     def __init__(self, c, site, root, domains, mode='export'):
         self.c, self.site, self.root, self.domains, self.mode = c, site, root, domains, mode
-        self.rs = rows(c, site['id']); self.ord = order(self.rs); self.vis = [(p, d) for p, d in self.ord if not p['hidden'] and self._shown(p)]
-        self.slug_of = {p['slug']: p for p, _ in self.vis}; self.files, self.decks, self.warn = {}, {}, []
+        self.rs = rows(c, site['id']); self.by = {r['id']: r for r in self.rs}; self.ord = order(self.rs); self.vis = [(p, d) for p, d in self.ord if not p['hidden'] and self._shown(p)]
+        self.slug_of = {p['slug']: p for p, _ in self.vis}; self.files, self.decks, self.warn = {}, {}, []; self.qseq = 0
+        ids = {p['id'] for p, _ in self.vis}; self.kids = {}
+        for p, _ in self.vis: self.kids.setdefault(p['parent_id'] if p['parent_id'] in ids else 0, []).append(p)
 
     def _shown(self, p):
-        by = {r['id']: r for r in self.rs}; n = p['parent_id']; k = 0
+        by = self.by; n = p['parent_id']; k = 0
         while n and n in by and k < 10:
             if by[n]['hidden']: return False
             n = by[n]['parent_id']; k += 1
@@ -248,7 +252,7 @@ class Ctx:
         return p['slug'] + '.html' if self.mode == 'export' else f"/sites/{self.site['id']}/view/{p['slug']}"
 
     def deck_href(self, did): return f'deck-{did}.html' if self.mode == 'export' else f"/sites/{self.site['id']}/deck/{did}"
-    def file_href(self, rel, name): return name if self.mode == 'export' else f"/sites/{self.site['id']}/file?p={html.escape(rel, quote=True)}"
+    def file_href(self, rel, name): return name if self.mode == 'export' else f"/sites/{self.site['id']}/file?p={html.escape(quote(rel), quote=True)}"
 
     def link(self, href):
         m = re.match(r'^thilek://page/([a-z0-9-]{1,50})$', href)
@@ -269,12 +273,12 @@ def quiz_card(c, qid, ctx, w):
     its = c.execute('SELECT * FROM quiz_item WHERE quiz_id=? ORDER BY pos', (qid,)).fetchall()
     if not its: w.append(f'quiz-ref: το quiz «{z["name"]}» είναι κενό'); return f"<p class=warn>⚠ Το quiz «{E(z['name'])}» είναι κενό.</p>"
     from .quizzes import LET, ans_text, opts_of
-    out = []
+    out = []; ctx.qseq += 1; k = ctx.qseq
     for n, r in enumerate(its, 1):
         if r['use_image']: w.append(f'quiz-ref {qid}: το στοιχείο {n} χρησιμοποιεί εικόνα από το PDF — η εικόνα ΔΕΝ περιλαμβάνεται στο στιγμιότυπο')
         head = f"<div><span class=num>{n}.</span> <b>{md_text(r['stem'])}</b> <small>({r['points']:g} μον.)</small></div>"
-        if r['kind'] == 'tf': body = f"<div class=opts><label><input type=radio name=q{r['id']} value='Σωστό'> Σωστό</label> <label><input type=radio name=q{r['id']} value='Λάθος'> Λάθος</label></div>"
-        elif r['kind'] == 'mcq': body = "<div class=opts>" + ''.join(f"<div><label><input type=radio name=q{r['id']} value='{i}'> {LET[i] if i < len(LET) else i + 1}. {md_text(o)}</label></div>" for i, o in enumerate(opts_of(r))) + '</div>'
+        if r['kind'] == 'tf': body = f"<div class=opts><label><input type=radio name=q{k}_{r['id']} value='Σωστό'> Σωστό</label> <label><input type=radio name=q{k}_{r['id']} value='Λάθος'> Λάθος</label></div>"
+        elif r['kind'] == 'mcq': body = "<div class=opts>" + ''.join(f"<div><label><input type=radio name=q{k}_{r['id']} value='{i}'> {LET[i] if i < len(LET) else i + 1}. {md_text(o)}</label></div>" for i, o in enumerate(opts_of(r))) + '</div>'
         else: body = f"<details><summary>Απάντηση</summary><div>{md_text(r['answer'])}</div></details>"
         fb = (f"<div class=fb hidden>Σωστή απάντηση: <b>{md_text(ans_text(r))}</b>{' — ' + md_text(r['feedback']) if r['feedback'] else ''}</div>" if r['kind'] != 'free' else (f"<div class=fb hidden>{md_text(r['feedback'])}</div>" if r['feedback'] else ''))
         out.append(f"<div class='q qi' data-kind='{E(r['kind'])}' data-answer='{E(r['answer'] or '', quote=True)}' data-points='{r['points']:g}'>{head}{body}{fb}</div>")
@@ -363,8 +367,7 @@ CSS = ("*{box-sizing:border-box}body{margin:0;font:17px/1.6 system-ui,'Segoe UI'
 def menu_html(ctx, cur):
     def lvl(parent):
         items = []
-        for p, d in ctx.vis:
-            if (p['parent_id'] if p['parent_id'] in {x['id'] for x, _ in ctx.vis} else 0) != parent: continue
+        for p in ctx.kids.get(parent, []):
             sub = lvl(p['id'])
             if p['kind'] == 'section': items.append(f"<li class=sec><span>{E(p['title'])}</span>{sub}</li>")
             else: items.append(f"<li><a href='{E(ctx.href(p), quote=True)}'{' class=cur aria-current=page' if cur and p['id'] == cur['id'] else ''}>{E(p['title'])}</a>{sub}</li>")
@@ -378,7 +381,7 @@ def page_html(ctx, p, body=None, title=None, kind=None, note=''):
     p = dict(p, kind=kind or p['kind'], title=(title if title is not None else p['title']))
     inner, w = body_html(ctx, p, body); text = (body if body is not None else p['body']) or ''
     if p['kind'] == 'section' and not inner.strip():
-        kids = [x for x, _ in ctx.vis if x['parent_id'] == p['id']]
+        kids = ctx.kids.get(p['id'], [])
         inner = ''.join(f"<a class=card href='{E(ctx.href(k), quote=True)}'><b>{E(k['title'])}</b></a>" for k in kids) or '<p><i>Η ενότητα δεν έχει σελίδες.</i></p>'
     math = bool(re.search(r'\$|\\\(|\\\[', inner)); a = X.assets() if math else None
     vp = [x for x, _ in ctx.vis if x['kind'] == 'page']; i = next((k for k, x in enumerate(vp) if x['id'] == p['id']), -1)
@@ -398,6 +401,7 @@ def page_html(ctx, p, body=None, title=None, kind=None, note=''):
     scripts = ''
     if math: scripts += '<script>' + a['katex_js'].replace('</script', '<\\/script') + '</script><script>' + a['auto_js'].replace('</script', '<\\/script') + "</script><script>try{renderMathInElement(document.querySelector('main'),{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}],throwOnError:false});}catch(e){}</script>"
     if js: scripts += '<script>' + js + '</script>'
+    if note == 'auto': note = ' · '.join(w)
     banner = f"<div style=\"position:sticky;top:0;z-index:9;background:#fff3cd;color:#664d03;font:13px sans-serif;padding:4px 8px\">⚠ {E(note)[:600]}</div>" if note else ''
     h = (f"<!doctype html><html lang=el><head><meta charset=utf-8><meta http-equiv='Content-Security-Policy' content=\"{E(csp)}\"><meta name=viewport content='width=device-width,initial-scale=1'><title>{E(p['title'])} · {E(site['title'] or site['name'])}</title>"
          f"<style>{css}</style>" + ('<style>' + a['katex_css'].replace('</style', '<\\/style') + '</style>' if math else '') + f"</head><body>{banner}<div class=layout><nav class=menu aria-label='Μενού'>{st}{menu_html(ctx, p)}</nav><main>{crumb}<h1>{E(p['title'])}</h1>{inner}{pn}</main></div>{foot}{scripts}</body></html>")
@@ -411,11 +415,13 @@ def build_zip(c, sid, domains=()):
     if not s: raise ValueError('Δεν υπάρχει αυτό το site.')
     root = config.load()['data_root']; ctx = Ctx(c, s, root, list(domains), 'export')
     if not ctx.vis: raise ValueError('Το site δεν έχει εμφανίσιμες σελίδες.')
-    files, warns, deck_ids = {}, [], {}
+    files, warns, deck_ids, size = {}, [], {}, 0
     for p, _ in ctx.vis:
-        h, w = page_html(ctx, p); files[p['slug'] + '.html'] = h.encode('utf-8'); warns += [f"{p['title']}: {x}" for x in w]; deck_ids.update(ctx.decks)
+        h, w = page_html(ctx, p); files[p['slug'] + '.html'] = h.encode('utf-8'); size += len(files[p['slug'] + '.html'])
+        if size > MAX_TOTAL: raise ValueError('Το πακέτο ξεπερνά το όριο μεγέθους (60 MB).')
+        warns += [f"{p['title']}: {x}" for x in w]; deck_ids.update(ctx.decks)
         for nm, (rel, fp) in ctx.files.items():
-            if fp.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.svg'): files.setdefault(nm, fp.read_bytes())
+            if fp.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.svg') and nm not in files: files[nm] = fp.read_bytes(); size += len(files[nm])
     home = ctx.home(); files['index.html'] = files[home['slug'] + '.html']
     for did, d in deck_ids.items():
         files[f'deck-{did}.html'] = DX.reveal(d, D.slides(c, did), root, publish=True, domains=list(domains)).encode('utf-8')

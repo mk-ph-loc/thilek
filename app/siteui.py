@@ -22,6 +22,11 @@ TOOLBAR = "<div class='bar dktb' role=toolbar aria-label='Εργαλειοθήκ
 JS = (pathlib.Path(__file__).parent / 'static' / 'site.js').read_text(encoding='utf-8')
 
 
+def sbx(r):
+    """Προσθέτει sandbox (αδιαφανές origin) στο CSP: ακόμη και ανοιγμένη σε νέα καρτέλα η σελίδα δεν έχει πρόσβαση στο origin της εφαρμογής."""
+    r.headers['Content-Security-Policy'] += '; sandbox allow-scripts allow-popups'; return r
+
+
 def domains(): return EM.hosts(settings.get('embed_domains'))
 def get_site(c, sid):
     s = S.get(c, sid)
@@ -107,7 +112,7 @@ def page_form(s, p, c):
 
 def settings_panel(s, od):
     sid = s['id']; th = ''.join(opt(k, v[0], s['theme']) for k, v in S.THEMES.items())
-    home = "<option value='0'>— η πρώτη σελίδα —</option>" + ''.join(opt(p['id'], p['title'], s['opts']['home']) for p, _ in od if p['kind'] == 'page')
+    home = "<option value='0'>— η πρώτη σελίδα —</option>" + ''.join(opt(p['id'], p['title'], s['opts']['home']) for p, _ in od if p['kind'] == 'page' and not p['hidden'])
     return (f"<details><summary><b>Ρυθμίσεις site</b></summary><form method=post action='/sites/{sid}/save'><fieldset><legend>Site</legend>{fld('Όνομα', inp('name', s['name'], 34))}{fld('Τίτλος (στο μενού)', inp('title', s['title'], 40))}"
             f"{fld('Θέμα', sel('theme', th))}{fld('Αρχική σελίδα', sel('home', home))}{fld('Υποσέλιδο', inp('footer', s['opts']['footer'], 50))}<button class=primary>Αποθήκευση ρυθμίσεων</button></fieldset></form></details>")
 
@@ -115,7 +120,7 @@ def settings_panel(s, od):
 def export_panel(s, c):
     sid = s['id']; ctx = S.Ctx(c, s, config.load()['data_root'], domains(), 'export'); ws = []
     for p, _ in ctx.vis:
-        _, w = S.page_html(ctx, p); ws += [f"{p['title']}: {x}" for x in w]
+        ws += [f"{p['title']}: {x}" for x in S.body_html(ctx, p)[1]]
     wl = (f"<div class='adm adm-warning'><p class=adm-t>Προειδοποιήσεις ({len(ws)})</p><ul>{''.join(f'<li>{E(x)}</li>' for x in ws[:30])}</ul></div>" if ws else '')
     return (f"<h3>Προεπισκόπηση και εξαγωγή</h3>{wl}<div class=bar><a class=btn target=_blank href='/sites/{sid}/view/index'>▶ Ολόκληρο το site (νέα καρτέλα)</a> <a class=btn href='/sites/{sid}/export.zip'>⬇ Zip (index.html + σελίδες)</a></div>"
             "<div class='adm adm-info'><p>Τα quiz και οι παρουσιάσεις μπαίνουν ως <b>στιγμιότυπο</b> της ώρας της εξαγωγής (αν αλλάξεις το quiz μετά, ξαναεξάγεις). Οι εικόνες Markdown ενσωματώνονται· τα αρχεία (pdf κ.ά.) μπαίνουν στο zip.</p></div>")
@@ -148,6 +153,7 @@ async def site_page_act(request: Request, sid: int, pid: int):
         get_site(c, sid); p = S.get_page(c, sid, pid)
         if not p: raise HTTPException(404, 'Δεν υπάρχει αυτή η σελίδα.')
         msg = ''
+        if act == 'save' and len(raw(f, 'body')) > S.LIM['body']: raise HTTPException(422, 'Το σώμα της σελίδας ξεπερνά το όριο των 200.000 χαρακτήρων· δεν αποθηκεύτηκε.')
         if act == 'save': S.update_page(c, sid, pid, title=fv(f, 'title'), slug=fv(f, 'slug'), kind=fv(f, 'kind'), body=raw(f, 'body'), hidden=fv(f, 'hidden') == '1'); msg = 'Αποθηκεύτηκε.'
         elif act in ('up', 'down', 'in', 'out'):
             if not S.move(c, sid, pid, act): msg = 'Δεν γίνεται αυτή η μετακίνηση.'
@@ -169,7 +175,7 @@ def site_view(sid: int, slug: str):
         s = get_site(c, sid); ds = domains(); ctx = S.Ctx(c, s, config.load()['data_root'], ds, 'preview'); p = ctx.home() if slug == 'index' else ctx.slug_of.get(slug)
         if not p:
             return csp_html(f"<!doctype html><meta charset=utf-8><p style='font:14px sans-serif;margin:1em'>{'Δεν υπάρχει εμφανίσιμη σελίδα.' if slug == 'index' else 'Δεν υπάρχει αυτή η σελίδα ή είναι κρυφή.'}</p>", 404, frames=ds)
-        h, _ = S.page_html(ctx, p); return csp_html(h, frames=ds)
+        h, _ = S.page_html(ctx, p); return sbx(csp_html(h, frames=ds))
     finally: c.close()
 
 
@@ -180,11 +186,11 @@ async def site_preview(request: Request, sid: int, pid: int):
     try:
         s = get_site(c, sid); p = S.get_page(c, sid, pid)
         if not p: raise HTTPException(404, 'Δεν υπάρχει αυτή η σελίδα.')
-        ds = domains(); ctx = S.Ctx(c, s, config.load()['data_root'], ds, 'preview'); body = raw(f, 'body')[:S.LIM['body']]
+        ds = domains(); ctx = S.Ctx(c, s, config.load()['data_root'], ds, 'preview'); body = raw(f, 'body')
         if not any(x['id'] == pid for x, _ in ctx.vis): ctx.vis.append((p, 0))
         kind = fv(f, 'kind') if fv(f, 'kind') in S.KIND_KEYS else p['kind']
-        h, w = S.page_html(ctx, p, body=body, title=fv(f, 'title')[:S.LIM['title']] or p['title'], kind=kind, note=' · '.join(w_ for w_ in S.body_html(ctx, p, body)[1])[:600])
-        return csp_html(h, frames=ds)
+        h, _ = S.page_html(ctx, p, body=body, title=fv(f, 'title')[:S.LIM['title']] or p['title'], kind=kind, note='auto')
+        return sbx(csp_html(h, frames=ds))
     finally: c.close()
 
 
@@ -194,7 +200,7 @@ def site_deck(sid: int, did: int):
     try:
         get_site(c, sid); d = D.get(c, did)
         if not d: raise HTTPException(404, 'Δεν υπάρχει αυτή η παρουσίαση.')
-        ds = domains(); return csp_html(DX.reveal(d, D.slides(c, did), config.load()['data_root'], domains=ds), frames=ds)
+        ds = domains(); return sbx(csp_html(DX.reveal(d, D.slides(c, did), config.load()['data_root'], domains=ds), frames=ds))
     finally: c.close()
 
 

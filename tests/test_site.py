@@ -260,3 +260,47 @@ def test_deck_route_and_help_and_menu(cl):
     sid = mk(cl); c = conn(); did = D.create(c, 'Π', 'free', 'Π'); s1 = D.add_slide(c, did); D.update_slide(c, did, s1, title='Τ', body='κείμενο'); c.commit(); c.close()
     r = cl.get(f'/sites/{sid}/deck/{did}', auth=A); assert r.status_code == 200 and '<section' in r.text and 'frame-src' in r.headers['content-security-policy'] and cl.get(f'/sites/{sid}/deck/777', auth=A).status_code == 404
     r = cl.get('/sites', auth=A); assert "href='/sites'" in r.text and 'Site μαθήματος' in r.text
+
+
+# ---------- διορθώσεις μετά το review (0.34) ----------
+def test_slug_never_exceeds_50_and_links_work(cl):
+    assert len(S.clean_slug('deck-' + 'a' * 60)) <= 50 and re.fullmatch(r'[a-z0-9-]{1,50}', S.clean_slug('index' + 'x' * 60))
+    sid = mk(cl); c = conn(); a = S.add_page(c, sid, 'Α', body='x'); S.update_page(c, sid, a, slug='deck-' + 'a' * 60); slug = S.get_page(c, sid, a)['slug']
+    b = S.add_page(c, sid, 'Β', body=f'[x](thilek://page/{slug})'); ctx = ctx_of(c, sid); assert f'href="{slug}.html"' in S.page_html(ctx, S.get_page(c, sid, b))[0]
+
+
+def test_flat_name_case_insensitive():
+    t = {}; a = S.flat_name('x/A.pdf', t); t[a] = 'x/A.pdf'; b = S.flat_name('y/a.pdf', t); assert a.lower() != b.lower()
+
+
+def test_same_quiz_twice_has_distinct_radio_names(cl):
+    sid = mk(cl); c = conn(); q = seed_quiz(c); c.commit(); c.close(); h, _ = page(sid, f'::: quiz-ref {q}\n:::\n\n::: quiz-ref {q}\n:::')
+    names = re.findall(r"type=radio name=(q\d+_\d+)", h); assert len(set(names)) == 4 and {n.split('_')[0] for n in names} == {'q1', 'q2'}          # διαφορετικές ομάδες radio ανά εμφάνιση
+
+
+def test_file_href_preview_is_url_encoded(cl):
+    root = pathlib.Path(os.environ['THILEK_ROOT']); (root / 'C').mkdir(exist_ok=True); (root / 'C' / 'a&b#1.pdf').write_bytes(b'%PDF-1.4 x')
+    sid = mk(cl); h, w = page(sid, '::: file C/a&b#1.pdf\n:::', mode='preview'); assert not w and 'p=C/a%26b%231.pdf' in h
+    assert cl.get(f'/sites/{sid}/file', params={'p': 'C/a&b#1.pdf'}, auth=A).status_code == 200
+
+
+def test_oversize_body_rejected_not_truncated(cl):
+    sid = mk(cl); pid = S.pages(conn(), sid)[0]['id']
+    r = cl.post(f'/sites/{sid}/page/{pid}', data={'act': 'save', 'title': 'Τ', 'slug': 'x', 'kind': 'page', 'body': 'a' * (S.LIM['body'] + 1)}, auth=A, headers=H); assert r.status_code == 422
+    assert S.get_page(conn(), sid, pid)['title'] == 'Αρχική'
+
+
+def test_view_routes_are_sandboxed(cl):
+    sid = mk(cl); did = None; c = conn(); did = D.create(c, 'Π', 'free', 'Π'); s1 = D.add_slide(c, did); D.update_slide(c, did, s1, title='Τ', body='κ'); c.commit(); c.close()
+    pid = S.pages(conn(), sid)[0]['id']
+    for r in (cl.get(f'/sites/{sid}/view/index', auth=A), cl.get(f'/sites/{sid}/deck/{did}', auth=A), cl.post(f'/sites/{sid}/preview/{pid}', data={'body': 'x'}, auth=A, headers=H)):
+        assert r.status_code == 200 and 'sandbox allow-scripts allow-popups' in r.headers['content-security-policy'] and 'allow-same-origin' not in r.headers['content-security-policy']
+
+
+def test_hidden_page_not_offered_as_home_and_many_pages_fast(cl):
+    import time
+    sid = mk(cl); c = conn(); h = S.add_page(c, sid, 'Κρυφή'); S.update_page(c, sid, h, hidden=True); c.commit(); c.close()
+    home_sel = cl.get(f'/sites/{sid}', auth=A).text.split('Αρχική σελίδα')[1].split('</select>')[0]; assert f"value='{h}'" not in home_sel and 'Αρχική' in home_sel
+    c = conn(); par = 0
+    for i in range(150): S.add_page(c, sid, f'Σ{i}', parent=0, body='κείμενο')
+    c.commit(); t = time.time(); S.build_zip(c, sid, DOM); assert time.time() - t < 8
