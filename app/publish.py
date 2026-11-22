@@ -129,7 +129,8 @@ def publish_delete(request: Request, slug: str):
 
 def _send(path: pathlib.Path):
     ext = path.suffix.lower()
-    return Response(path.read_bytes(), media_type=MIME.get(ext, 'application/octet-stream'), headers={'Content-Security-Policy': csp(), 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store'})
+    # PDF: χωρίς sandbox στο CSP (το sandbox μπλοκάρει τον PDF viewer του Chrome)
+    return Response(path.read_bytes(), media_type=MIME.get(ext, 'application/octet-stream'), headers={'Content-Security-Policy': "default-src 'none'" if ext == '.pdf' else csp(), 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store'})
 
 
 @router.get('/p/', response_class=HTMLResponse)

@@ -94,8 +94,8 @@ def test_deckmd_site_directives_and_decks_unchanged():
 
 
 # ---------- μπλοκ ----------
-def page(sid, body, mode='export', domains=DOM, title='Σελίδα'):
-    c = conn(); pid = S.add_page(c, sid, title, body=body); c.commit(); p = S.get_page(c, sid, pid); ctx = ctx_of(c, sid, mode, domains)
+def page(sid, body, mode='export', domains=DOM, title='Σελίδα', answers='show'):
+    c = conn(); S.save_site(c, sid, quiz_answers=answers); pid = S.add_page(c, sid, title, body=body); c.commit(); p = S.get_page(c, sid, pid); ctx = ctx_of(c, sid, mode, domains)
     h, w = S.page_html(ctx, p); c.close(); return h, w
 
 
@@ -192,15 +192,15 @@ def test_live_override_does_not_change_db(cl):
 # ---------- zip ----------
 def test_build_zip_structure_and_flat_names(cl):
     root = pathlib.Path(os.environ['THILEK_ROOT']); (root / 'C').mkdir(exist_ok=True); (root / 'C' / 'a.pdf').write_bytes(b'%PDF-1.4 x')
-    sid = mk(cl); c = conn(); qid = seed_quiz(c); did = D.create(c, 'Π', 'free', 'Π'); s1 = D.add_slide(c, did); D.update_slide(c, did, s1, title='Διαφάνεια', body='Κείμενο')
+    sid = mk(cl); c = conn(); S.save_site(c, sid, quiz_answers='show'); qid = seed_quiz(c); did = D.create(c, 'Π', 'free', 'Π'); s1 = D.add_slide(c, did); D.update_slide(c, did, s1, title='Διαφάνεια', body='Κείμενο')
     pg = S.add_page(c, sid, 'Υλικό', body=f'::: quiz-ref {qid}\n:::\n\n::: deck-ref {did}\n:::\n\n::: file C/a.pdf\n:::\n\nΤύπος $x$')
     hid = S.add_page(c, sid, 'Κρυφό'); S.update_page(c, sid, hid, hidden=True); c.commit()
     data, fname, model = S.build_zip(c, sid, DOM); c.close(); z = zipfile.ZipFile(io.BytesIO(data)); names = set(z.namelist())
-    assert fname.endswith('-site.zip') and {'index.html', 'archiki.html', 'data.json', 'README.txt', f'deck-{did}.html', 'file-a.pdf'} <= names
+    assert fname.endswith('-site.zip') and {'index.html', 'archiki.html', 'search.html', 'data.json', 'README.txt', f'deck-{did}.html', 'file-a.pdf'} <= names
     assert not any('/' in n or '\\' in n for n in names) and 'kryfo.html' not in names and z.read('index.html') == z.read('archiki.html')
     assert all(pathlib.Path(n).suffix.lower() in publish.ALLOWED | {'.txt'} for n in names if n != 'README.txt'), names                 # ώστε να περνούν από publish.save_site (0.35)
-    dj = json.loads(z.read('data.json')); assert dj['home'] == 'archiki.html' and [p['title'] for p in dj['pages']] == ['Αρχική', 'Υλικό'] and dj['decks'][0]['file'] == f'deck-{did}.html' and dj['warnings']
-    assert b'class=sqw' in z.read([n for n in names if n.endswith('.html') and n not in ('index.html', 'archiki.html') and not n.startswith('deck-')][0]) and b'<section' in z.read(f'deck-{did}.html')
+    dj = json.loads(z.read('data.json')); assert dj['home'] == 'archiki.html' and [p['title'] for p in dj['pages']] == ['Αρχική', 'Υλικό'] and dj['decks'][0]['file'] == f'deck-{did}.html' and 'warnings' not in dj and model['warnings']
+    assert b'class=sqw' in z.read([n for n in names if n.endswith('.html') and n not in ('index.html', 'archiki.html', 'search.html') and not n.startswith('deck-')][0]) and b'<section' in z.read(f'deck-{did}.html')
     assert z.read('file-a.pdf') == b'%PDF-1.4 x'
 
 
@@ -304,3 +304,74 @@ def test_hidden_page_not_offered_as_home_and_many_pages_fast(cl):
     c = conn(); par = 0
     for i in range(150): S.add_page(c, sid, f'Σ{i}', parent=0, body='κείμενο')
     c.commit(); t = time.time(); S.build_zip(c, sid, DOM); assert time.time() - t < 8
+
+
+# ---------- 0.35: απαντήσεις quiz, αναζήτηση, δημοσίευση ----------
+def test_answers_hidden_by_default_everywhere(cl):
+    sid = mk(cl); c = conn(); q = seed_quiz(c); c.commit(); c.close()
+    h, w = page(sid, f"::: quiz-ref {q}\n:::\n\n::: quiz\ntype: mcq\nstem: Ποιο;\noptions:\n  - ΑΛΦΑ\n  - ΒΗΤΑ\nanswer: 1\nfeedback: ΕΞΗΓΗΣΗΤΕΣΤ\n:::", answers='hide')
+    assert S.get(conn(), sid)['opts']['quiz_answers'] == 'hide' and 'sq-check' not in h and 'data-answer' in h and "data-answer=''" in h and 'απάντηση &lt;b&gt;' not in h and 'Σωστά' not in h
+    assert 'ΕΞΗΓΗΣΗΤΕΣΤ' not in h and '<details>' not in h and 'class=fb' not in h and "querySelectorAll('.sqw')" not in h and 'Χωρίς έλεγχο απαντήσεων' in h
+    h2, _ = page(sid, f'::: quiz-ref {q}\n:::', answers='show'); assert 'sq-check' in h2 and "data-answer='Σωστό'" in h2
+
+
+def test_default_opts_and_copy_keep_answer_policy(cl):
+    sid = mk(cl); c = conn(); assert S.get(c, sid)['opts']['quiz_answers'] == 'hide' and S.get(c, sid)['opts']['pub'] == ''
+    S.save_site(c, sid, quiz_answers='show', home=S.pages(c, sid)[0]['id']); n = S.copy_site(c, sid); assert S.get(c, n)['opts']['quiz_answers'] == 'show'
+    S.save_site(c, sid, quiz_answers='bogus'); assert S.get(c, sid)['opts']['quiz_answers'] == 'show'
+
+
+def test_search_index_and_page(cl):
+    sid = mk(cl); c = conn(); q = seed_quiz(c); S.add_page(c, sid, 'Αντίσταση', body='Η **αντίσταση** μετριέται σε Ωμ. <script>alert(1)</script> $x$'); S.add_page(c, sid, 'Quiz', body=f'::: quiz-ref {q}\n:::'); c.commit()
+    files, model = S.build_files(c, sid, DOM); sh = files['search.html'].decode('utf-8'); m = re.search(r"<script type='application/json' id=ix>(.*?)</script>", sh, re.S); ix = json.loads(m.group(1))
+    assert [d['u'] for d in ix][:2] == ['archiki.html', 'antistasi.html'] and 'αντίσταση μετριέται' in ix[1]['x'] and '<script' not in m.group(1) and 'alert(1)' not in sh.split('id=ix>')[0]
+    assert all('απάντηση <b>' not in d['x'] and 'Σωστά' not in d['x'] and 'Εξήγησε' in d['x'] or d['u'] != 'quiz.html' for d in ix) and "href='search.html'" in files['antistasi.html'].decode('utf-8') and 'getElementById' in sh
+
+
+def test_search_preview_route_and_xss_in_titles(cl):
+    sid = mk(cl); c = conn(); S.add_page(c, sid, '</script><b>x', body='κείμενο'); c.commit(); c.close()
+    r = cl.get(f'/sites/{sid}/view/search', auth=A); assert r.status_code == 200 and 'id=ix' in r.text and '</script><b>x' not in r.text and 'sandbox allow-scripts' in r.headers['content-security-policy']
+
+
+def test_publish_site_and_republish_same_slug(cl):
+    sid = mk(cl); c = conn(); S.add_page(c, sid, 'Θεωρία', body='α'); c.commit()
+    s1 = S.publish_site(c, sid, DOM); c.commit(); d = publish.base() / s1; assert (d / 'index.html').is_file() and (d / 'search.html').is_file() and (d / 'meta.json').is_file() and S.get(c, sid)['opts']['pub'] == s1
+    assert 'site:' in json.loads((d / 'meta.json').read_text(encoding='utf-8'))['source'] and not (d / 'data.json').read_text(encoding='utf-8').count('warnings')
+    S.add_page(c, sid, 'Νέα', body='β'); c.commit(); s2 = S.publish_site(c, sid, DOM); assert s2 == s1 and (publish.base() / s1 / 'nea.html').is_file()
+    assert all(f.suffix.lower() in publish.ALLOWED and '/' not in f.name for f in d.iterdir() if f.name != 'meta.json')
+
+
+def test_publish_http_student_access_and_pdf_csp(cl):
+    root = pathlib.Path(os.environ['THILEK_ROOT']); (root / 'C').mkdir(exist_ok=True); (root / 'C' / 'a.pdf').write_bytes(b'%PDF-1.4 x')
+    sid = mk(cl); c = conn(); S.add_page(c, sid, 'Υλικό', body='::: file C/a.pdf\n:::'); c.commit(); c.close()
+    publish.set_pw('mathitis1'); r = cl.post(f'/sites/{sid}/publish', auth=A, headers=H, follow_redirects=False); assert r.status_code == 303
+    slug = S.get(conn(), sid)['opts']['pub']; stu = ('x', 'mathitis1')
+    assert cl.get(f'/p/{slug}/').status_code == 401 and cl.get(f'/p/{slug}/', auth=stu).status_code == 200 and cl.get(f'/p/{slug}/search.html', auth=stu).status_code == 200
+    pdf = cl.get(f'/p/{slug}/file-a.pdf', auth=stu); assert pdf.status_code == 200 and 'sandbox' not in pdf.headers['content-security-policy']
+    pg = cl.get(f'/p/{slug}/yliko.html', auth=stu); assert pg.status_code == 200 and 'sandbox' in pg.headers['content-security-policy']
+    assert cl.post(f'/sites/{sid}/publish', headers={'origin': 'http://evil.example'}, auth=A, follow_redirects=False).status_code == 403
+
+
+# ---------- 0.35: designer μπλοκ ----------
+def test_blocks_designer_round_trip_and_actions(cl):
+    sid = mk(cl); c = conn(); q = seed_quiz(c); did = D.create(c, 'Π', 'free', 'Π'); pid = S.add_page(c, sid, 'Σελ', body='Κείμενο **α**\n\n::: callout tip Συμβουλή\nμέσα\n:::\n\n::: cols\nΑ\n|||\nΒ\n:::\n\n'
+                  f'::: quiz-ref {q}\n:::\n\n::: deck-ref {did} Λεζάντα\n:::\n\n::: file C/a.pdf Φυλλάδιο\n:::\n\n::: embed https://www.youtube.com/watch?v=dQw4w9WgXcQ ratio=4:3 h=400\nΒίντεο\n:::\n\n::: quiz\ntype: true_false\nstem: Σ;\nanswer: true\n:::'); c.commit(); c.close()
+    r = cl.get(f'/sites/{sid}?p={pid}&mode=blocks', auth=A); assert r.status_code == 200 and 'blk' in r.text and r.text.count('<legend>') >= 8 and f"value='{q}' selected" in r.text and 'Λεζάντα' in r.text and 'data-blk=' not in r.text
+    body0 = S.get_page(conn(), sid, pid)['body']; bl = deckmd.parse(body0, S.DIRS)[0]; assert len(bl) == 8
+    d = {'n': str(len(bl)), 'title': 'Σελ', 'slug': 'sel', 'kind': 'page', 'act': 'save', 'b0_t': 'md', 'b0_text': 'Κείμενο **α**', 'b1_t': 'callout', 'b1_k': 'tip', 'b1_a': 'Συμβουλή', 'b1_text': 'μέσα',
+         'b2_t': 'cols', 'b2_text': 'Α\n|||\nΒ', 'b3_t': 'quiz-ref', 'b3_a': str(q), 'b4_t': 'deck-ref', 'b4_a': str(did), 'b4_c': 'Λεζάντα', 'b5_t': 'file', 'b5_a': 'C/a.pdf', 'b5_c': 'Φυλλάδιο',
+         'b6_t': 'embed', 'b6_a': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'b6_r': '4:3', 'b6_h': '400', 'b6_s': '', 'b6_c': 'Βίντεο', 'b7_t': 'quiz', 'b7_text': 'type: true_false\nstem: Σ;\nanswer: true'}
+    assert cl.post(f'/sites/{sid}/page/{pid}/blocks', data=d, auth=A, headers=H, follow_redirects=False).status_code == 303
+    assert deckmd.compose(deckmd.parse(S.get_page(conn(), sid, pid)['body'], S.DIRS)[0]) == S.get_page(conn(), sid, pid)['body'] and deckmd.parse(S.get_page(conn(), sid, pid)['body'], S.DIRS)[0] == bl         # round-trip ίδια μπλοκ
+    cl.post(f'/sites/{sid}/page/{pid}/blocks', data=dict(d, act='up1'), auth=A, headers=H); assert [b['t'] for b in deckmd.parse(S.get_page(conn(), sid, pid)['body'], S.DIRS)[0]][:2] == ['callout', 'md']
+    cl.post(f'/sites/{sid}/page/{pid}/blocks', data=dict(d, act='del0'), auth=A, headers=H); assert len(deckmd.parse(S.get_page(conn(), sid, pid)['body'], S.DIRS)[0]) == 7
+    cl.post(f'/sites/{sid}/page/{pid}/blocks', data=dict(d, act='add', newtype='callout'), auth=A, headers=H); assert deckmd.parse(S.get_page(conn(), sid, pid)['body'], S.DIRS)[0][-1]['t'] == 'callout'
+
+
+def test_blocks_designer_rejects_bad_input(cl):
+    sid = mk(cl); pid = S.pages(conn(), sid)[0]['id']; U = f'/sites/{sid}/page/{pid}/blocks'
+    assert cl.post(U, data={'n': '1', 'act': 'boom'}, auth=A, headers=H).status_code == 422 and cl.post(U, data={'n': '1', 'act': 'save'}, auth=A, headers={'origin': 'http://evil.example'}).status_code == 403
+    assert cl.post(f'/sites/{sid}/page/9999/blocks', data={'n': '0', 'act': 'save'}, auth=A, headers=H).status_code == 404
+    r = cl.post(U, data={'n': '3', 'act': 'save', 'title': 'Τ', 'slug': 'x', 'kind': 'page', 'b0_t': 'evil', 'b0_text': 'x', 'b1_t': 'embed', 'b1_a': 'javascript:alert(1)', 'b1_h': '99999', 'b2_t': 'quiz-ref', 'b2_a': 'abc; DROP'}, auth=A, headers=H, follow_redirects=False)
+    assert r.status_code == 303; body = S.get_page(conn(), sid, pid)['body']; assert 'evil' not in body and 'DROP' not in body and 'h=99999' not in body
+    c = conn(); h, w = S.page_html(ctx_of(c, sid), S.get_page(c, sid, pid)); assert w and 'href="javascript' not in h and "href='javascript" not in h and 'src="javascript' not in h and "src='javascript" not in h

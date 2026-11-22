@@ -13,7 +13,7 @@ KINDS = (('page', 'Σελίδα'), ('section', 'Ενότητα (μόνο μεν�
 KIND_KEYS = tuple(k for k, _ in KINDS)
 LIM = {'name': 100, 'title': 200, 'body': 200_000, 'footer': 300}
 MAX_PAGES, MAX_DEPTH = 200, 3
-MAX_FILE, MAX_TOTAL = 10_000_000, 60_000_000
+MAX_FILE, MAX_TOTAL, MAX_INDEX_TEXT = 10_000_000, 60_000_000, 30_000
 RESERVED = {'index', 'data', 'readme', 'search', 'meta'}
 FILE_EXT = {'.pdf', '.png', '.jpg', '.jpeg', '.svg', '.txt', '.json'}
 CALLOUTS = {'note': ('Σημείωση', '#3b6ea5'), 'tip': ('Συμβουλή', '#2e9e5b'), 'warning': ('Προσοχή', '#b45309'), 'danger': ('Κίνδυνος', '#c0392b')}
@@ -34,7 +34,8 @@ def load_opts(raw):
     try: d = json.loads(raw or '{}')
     except ValueError: d = {}
     d = d if isinstance(d, dict) else {}
-    return {'footer': d['footer'][:LIM['footer']] if isinstance(d.get('footer'), str) else '', 'home': d['home'] if isinstance(d.get('home'), int) and not isinstance(d.get('home'), bool) else 0}
+    return {'footer': d['footer'][:LIM['footer']] if isinstance(d.get('footer'), str) else '', 'home': d['home'] if isinstance(d.get('home'), int) and not isinstance(d.get('home'), bool) else 0,
+            'quiz_answers': 'show' if d.get('quiz_answers') == 'show' else 'hide', 'pub': d['pub'] if isinstance(d.get('pub'), str) and re.fullmatch(r'[a-z0-9-]{1,50}', d['pub']) else ''}
 
 
 def theme_of(t): return t if t in THEMES else 'calm'
@@ -74,11 +75,13 @@ def create(c, name, title='', theme='calm', course=''):
     return sid
 
 
-def save_site(c, sid, name=None, title=None, theme=None, footer=None, home=None):
+def save_site(c, sid, name=None, title=None, theme=None, footer=None, home=None, quiz_answers=None, pub=None):
     s = get(c, sid)
     if not s: return
     o = dict(s['opts'])
     if footer is not None: o['footer'] = footer[:LIM['footer']]
+    if quiz_answers in ('show', 'hide'): o['quiz_answers'] = quiz_answers
+    if pub is not None: o['pub'] = pub
     if home is not None: o['home'] = home if c.execute('SELECT 1 FROM site_page WHERE id=? AND site_id=?', (home, sid)).fetchone() else 0
     c.execute('UPDATE site SET name=?,title=?,theme=?,opts=?,updated=? WHERE id=?', ((name if name else s['name'])[:LIM['name']] or s['name'], (title if title is not None else s['title'] or '')[:LIM['title']],
                                                                                     theme_of(theme if theme else s['theme']), json.dumps(o, ensure_ascii=False), now(), sid))
@@ -97,7 +100,7 @@ def copy_site(c, sid, name=None):
         ids[p['id']] = c.execute('INSERT INTO site_page(site_id,parent_id,pos,slug,title,kind,body,opts,hidden,updated) VALUES(?,?,?,?,?,?,?,?,?,?)',
                                  (n, ids.get(p['parent_id'], 0), p['pos'], p['slug'], p['title'], p['kind'], p['body'], p['opts'], p['hidden'], now())).lastrowid
     h = s['opts']['home']
-    if h in ids: c.execute('UPDATE site SET opts=? WHERE id=?', (json.dumps({'footer': s['opts']['footer'], 'home': ids[h]}, ensure_ascii=False), n))
+    if h in ids: c.execute('UPDATE site SET opts=? WHERE id=?', (json.dumps({'footer': s['opts']['footer'], 'home': ids[h], 'quiz_answers': s['opts']['quiz_answers']}, ensure_ascii=False), n))
     return n
 
 
@@ -237,7 +240,7 @@ class Ctx:
     def __init__(self, c, site, root, domains, mode='export'):
         self.c, self.site, self.root, self.domains, self.mode = c, site, root, domains, mode
         self.rs = rows(c, site['id']); self.by = {r['id']: r for r in self.rs}; self.ord = order(self.rs); self.vis = [(p, d) for p, d in self.ord if not p['hidden'] and self._shown(p)]
-        self.slug_of = {p['slug']: p for p, _ in self.vis}; self.files, self.decks, self.warn = {}, {}, []; self.qseq = 0
+        self.slug_of = {p['slug']: p for p, _ in self.vis}; self.files, self.decks, self.warn = {}, {}, []; self.qseq = 0; self.answers = site['opts']['quiz_answers'] == 'show'; self.last_inner = ''
         ids = {p['id'] for p, _ in self.vis}; self.kids = {}
         for p, _ in self.vis: self.kids.setdefault(p['parent_id'] if p['parent_id'] in ids else 0, []).append(p)
 
@@ -250,6 +253,8 @@ class Ctx:
 
     def href(self, p):
         return p['slug'] + '.html' if self.mode == 'export' else f"/sites/{self.site['id']}/view/{p['slug']}"
+
+    def search_href(self): return 'search.html' if self.mode == 'export' else f"/sites/{self.site['id']}/view/search"
 
     def deck_href(self, did): return f'deck-{did}.html' if self.mode == 'export' else f"/sites/{self.site['id']}/deck/{did}"
     def file_href(self, rel, name): return name if self.mode == 'export' else f"/sites/{self.site['id']}/file?p={html.escape(quote(rel), quote=True)}"
@@ -277,14 +282,16 @@ def quiz_card(c, qid, ctx, w):
     for n, r in enumerate(its, 1):
         if r['use_image']: w.append(f'quiz-ref {qid}: το στοιχείο {n} χρησιμοποιεί εικόνα από το PDF — η εικόνα ΔΕΝ περιλαμβάνεται στο στιγμιότυπο')
         head = f"<div><span class=num>{n}.</span> <b>{md_text(r['stem'])}</b> <small>({r['points']:g} μον.)</small></div>"
+        if not ctx.answers: r = dict(r, answer='', feedback='')
         if r['kind'] == 'tf': body = f"<div class=opts><label><input type=radio name=q{k}_{r['id']} value='Σωστό'> Σωστό</label> <label><input type=radio name=q{k}_{r['id']} value='Λάθος'> Λάθος</label></div>"
         elif r['kind'] == 'mcq': body = "<div class=opts>" + ''.join(f"<div><label><input type=radio name=q{k}_{r['id']} value='{i}'> {LET[i] if i < len(LET) else i + 1}. {md_text(o)}</label></div>" for i, o in enumerate(opts_of(r))) + '</div>'
-        else: body = f"<details><summary>Απάντηση</summary><div>{md_text(r['answer'])}</div></details>"
-        fb = (f"<div class=fb hidden>Σωστή απάντηση: <b>{md_text(ans_text(r))}</b>{' — ' + md_text(r['feedback']) if r['feedback'] else ''}</div>" if r['kind'] != 'free' else (f"<div class=fb hidden>{md_text(r['feedback'])}</div>" if r['feedback'] else ''))
+        elif ctx.answers: body = f"<details><summary>Απάντηση</summary><div>{md_text(r['answer'])}</div></details>"
+        else: body = ''
+        fb = ('' if not ctx.answers else f"<div class=fb hidden>Σωστή απάντηση: <b>{md_text(ans_text(r))}</b>{' — ' + md_text(r['feedback']) if r['feedback'] else ''}</div>" if r['kind'] != 'free' else (f"<div class=fb hidden>{md_text(r['feedback'])}</div>" if r['feedback'] else ''))
         out.append(f"<div class='q qi' data-kind='{E(r['kind'])}' data-answer='{E(r['answer'] or '', quote=True)}' data-points='{r['points']:g}'>{head}{body}{fb}</div>")
-    ctx.has_quiz = True
-    return (f"<section class=sqw><h3>{E(z['name'])}</h3>" + (f"<p>{E(z['description'])}</p>" if z['description'] else '') + ''.join(out)
-            + "<div class=bar><button type=button class=sq-check>Έλεγχος απαντήσεων</button> <button type=button class=sq-reset>Καθαρισμός</button> <b class=sq-score></b></div></section>")
+    ctx.has_quiz = ctx.answers
+    bar = "<div class=bar><button type=button class=sq-check>Έλεγχος απαντήσεων</button> <button type=button class=sq-reset>Καθαρισμός</button> <b class=sq-score></b></div>" if ctx.answers else "<p><small>Χωρίς έλεγχο απαντήσεων (το κρίνει ο εκπαιδευτικός).</small></p>"
+    return (f"<section class=sqw><h3>{E(z['name'])}</h3>" + (f"<p>{E(z['description'])}</p>" if z['description'] else '') + ''.join(out) + bar + "</section>")
 
 
 SQ_JS = ("(function(){var ws=document.querySelectorAll('.sqw');Array.prototype.forEach.call(ws,function(w){var items=function(){return Array.prototype.slice.call(w.querySelectorAll('.qi'))};"
@@ -311,8 +318,8 @@ def body_html(ctx, p, body=None):
                 ans = X.answer_text(it); opts = ''
                 if it['type'] == 'mcq': opts = '<ol class=opts>' + ''.join(f"<li>{X.LET[i] if i < len(X.LET) else i + 1}. {md_text(o)}</li>" for i, o in enumerate(it.get('options') or [])) + '</ol>'
                 elif it['type'] == 'matching': opts = '<ul>' + ''.join(f"<li>{md_text(a)}</li>" for a, _ in it.get('pairs') or []) + '</ul>'
-                out.append(f"<div class='q'><div><b>{md_text(it['stem'])}</b> <small>({it.get('points', 1):g} μον.)</small></div>{opts}<details><summary>Απάντηση</summary><div>{md_text(ans)}"
-                           + (f"<br><small>{md_text(it['feedback'])}</small>" if it.get('feedback') else '') + '</div></details></div>')
+                out.append(f"<div class='q'><div><b>{md_text(it['stem'])}</b> <small>({it.get('points', 1):g} μον.)</small></div>{opts}"
+                           + (f"<details><summary>Απάντηση</summary><div>{md_text(ans)}" + (f"<br><small>{md_text(it['feedback'])}</small>" if it.get('feedback') else '') + '</div></details>' if ctx.answers else '') + '</div>')
         elif t == 'embed':
             url, params = b['url'], b.get('params')
             if not deckmd.RE_URL.match(url): w.append(f"embed: μη επιτρεπτός σύνδεσμος «{url[:60]}» (μόνο https)")
@@ -351,7 +358,7 @@ def body_html(ctx, p, body=None):
 
 CSS = ("*{box-sizing:border-box}body{margin:0;font:17px/1.6 system-ui,'Segoe UI',sans-serif;background:var(--bg);color:var(--fg)}a{color:var(--accent)}.layout{display:grid;grid-template-columns:minmax(200px,260px) 1fr;min-height:100vh}"
        "nav.menu{background:var(--card);border-right:1px solid var(--line);padding:1rem .8rem;position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto}nav.menu .st{font-weight:700;color:var(--head);display:block;margin-bottom:.6rem;text-decoration:none;font-size:1.1em}"
-       "nav.menu ul{list-style:none;margin:0;padding:0}nav.menu li a{display:block;padding:.25rem .5rem;border-radius:6px;text-decoration:none;color:var(--fg)}nav.menu li a:hover{background:var(--line)}nav.menu li a.cur{background:var(--accent);color:#fff}"
+       "nav.menu .srchl{display:block;margin:0 0 .5rem;padding:.25rem .5rem;border-radius:6px;text-decoration:none;color:var(--fg);border:1px solid var(--line)}nav.menu ul{list-style:none;margin:0;padding:0}nav.menu li a{display:block;padding:.25rem .5rem;border-radius:6px;text-decoration:none;color:var(--fg)}nav.menu li a:hover{background:var(--line)}nav.menu li a.cur{background:var(--accent);color:#fff}"
        "nav.menu li.sec>span{display:block;padding:.35rem .5rem 0;font-weight:700;font-size:.85em;text-transform:uppercase;letter-spacing:.03em;opacity:.75}nav.menu ul ul{margin-left:.8rem}"
        "main{padding:1.5rem 2rem;max-width:56rem}h1,h2,h3{color:var(--head);line-height:1.25}.crumb{font-size:.85em;opacity:.75;margin-bottom:.4rem}.cols{display:flex;gap:1.2rem;flex-wrap:wrap}.col{flex:1;min-width:14rem}"
        "img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid var(--line);padding:.3rem .6rem}pre{background:var(--card);border:1px solid var(--line);padding:.6rem;overflow:auto;border-radius:8px}code{font-family:ui-monospace,Consolas,monospace}"
@@ -375,15 +382,15 @@ def menu_html(ctx, cur):
     return lvl(0)
 
 
-def page_html(ctx, p, body=None, title=None, kind=None, note=''):
+def page_html(ctx, p, body=None, title=None, kind=None, note='', override=None):
     """Πλήρης αυτόνομη σελίδα HTML της p (με μενού, ψιλά γράμματα, προηγούμενη/επόμενη). body/title/kind: αντικαθιστούν τα αποθηκευμένα (ζωντανή προεπισκόπηση). -> (html, warnings)."""
     ctx.has_quiz = ctx.has_embed = False; site = ctx.site; th = THEMES[site['theme']][1]
     p = dict(p, kind=kind or p['kind'], title=(title if title is not None else p['title']))
-    inner, w = body_html(ctx, p, body); text = (body if body is not None else p['body']) or ''
+    inner, w = body_html(ctx, p, body) if override is None else (override[0], []); text = (body if body is not None else p['body']) or ''
     if p['kind'] == 'section' and not inner.strip():
         kids = ctx.kids.get(p['id'], [])
         inner = ''.join(f"<a class=card href='{E(ctx.href(k), quote=True)}'><b>{E(k['title'])}</b></a>" for k in kids) or '<p><i>Η ενότητα δεν έχει σελίδες.</i></p>'
-    math = bool(re.search(r'\$|\\\(|\\\[', inner)); a = X.assets() if math else None
+    ctx.last_inner = inner; math = bool(re.search(r'\$|\\\(|\\\[', inner)); a = X.assets() if math else None
     vp = [x for x, _ in ctx.vis if x['kind'] == 'page']; i = next((k for k, x in enumerate(vp) if x['id'] == p['id']), -1)
     pn = ''
     if i >= 0 and p['kind'] == 'page':
@@ -397,39 +404,83 @@ def page_html(ctx, p, body=None, title=None, kind=None, note=''):
     css = ':root{' + ''.join(f'--{k}:{v};' for k, v in th.items()) + '}' + CSS
     frames = EM.csp_frames(ctx.domains)
     csp = f"default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; media-src data:; frame-src {frames}; base-uri 'none'; form-action 'none'"
-    js = (SQ_JS if ctx.has_quiz else '') + (EM.CLICK_JS if ctx.has_embed else '')
+    js = (SQ_JS if ctx.has_quiz else '') + (EM.CLICK_JS if ctx.has_embed else '') + (override[1] if override else '')
     scripts = ''
     if math: scripts += '<script>' + a['katex_js'].replace('</script', '<\\/script') + '</script><script>' + a['auto_js'].replace('</script', '<\\/script') + "</script><script>try{renderMathInElement(document.querySelector('main'),{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}],throwOnError:false});}catch(e){}</script>"
     if js: scripts += '<script>' + js + '</script>'
     if note == 'auto': note = ' · '.join(w)
     banner = f"<div style=\"position:sticky;top:0;z-index:9;background:#fff3cd;color:#664d03;font:13px sans-serif;padding:4px 8px\">⚠ {E(note)[:600]}</div>" if note else ''
     h = (f"<!doctype html><html lang=el><head><meta charset=utf-8><meta http-equiv='Content-Security-Policy' content=\"{E(csp)}\"><meta name=viewport content='width=device-width,initial-scale=1'><title>{E(p['title'])} · {E(site['title'] or site['name'])}</title>"
-         f"<style>{css}</style>" + ('<style>' + a['katex_css'].replace('</style', '<\\/style') + '</style>' if math else '') + f"</head><body>{banner}<div class=layout><nav class=menu aria-label='Μενού'>{st}{menu_html(ctx, p)}</nav><main>{crumb}<h1>{E(p['title'])}</h1>{inner}{pn}</main></div>{foot}{scripts}</body></html>")
+         f"<style>{css}</style>" + ('<style>' + a['katex_css'].replace('</style', '<\\/style') + '</style>' if math else '') + f"</head><body>{banner}<div class=layout><nav class=menu aria-label='Μενού'>{st}<a class=srchl href='{E(ctx.search_href(), quote=True)}'>🔍 Αναζήτηση</a>{menu_html(ctx, p)}</nav><main>{crumb}<h1>{E(p['title'])}</h1>{inner}{pn}</main></div>{foot}{scripts}</body></html>")
     return h, w
 
 
-# ---------- εξαγωγή ----------
-def build_zip(c, sid, domains=()):
-    """-> (zip bytes, όνομα, μοντέλο dict με warnings, files). ValueError αν δεν υπάρχουν εμφανίσιμες σελίδες ή το πακέτο είναι πολύ μεγάλο."""
+# ---------- αναζήτηση ----------
+SEARCH_JS = (r"(function(){var ix=JSON.parse(document.getElementById('ix').textContent),q=document.getElementById('q'),out=document.getElementById('res');"
+             r"function n(s){return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\u03c2/g,'\u03c3')}"
+             r"ix.forEach(function(d){d.nt=n(d.t);d.nx=n(d.x)});"
+             r"function go(){out.textContent='';var ts=n(q.value).split(/\s+/).filter(function(x){return x.length>1});if(!ts.length)return;var rs=[];"
+             r"ix.forEach(function(d){var sc=0,pos=-1;for(var i=0;i<ts.length;i++){var a=d.nt.indexOf(ts[i]),b=d.nx.indexOf(ts[i]);if(a<0&&b<0)return;if(a>=0)sc+=5;if(b>=0){sc+=1;if(pos<0)pos=b}}rs.push([sc,d,pos])});"
+             r"rs.sort(function(a,b){return b[0]-a[0]});if(!rs.length){var p=document.createElement('p');p.textContent='Δεν βρέθηκε τίποτα.';out.appendChild(p);return}"
+             r"rs.slice(0,25).forEach(function(r){var d=r[1],div=document.createElement('div'),a=document.createElement('a'),sm=document.createElement('small');div.className='card';a.href=d.u;a.textContent=d.t;"
+             r"var st=Math.max(0,r[2]-60);sm.textContent=r[2]>=0?(st>0?'… ':'')+d.x.slice(st,st+160)+' …':'';div.appendChild(a);div.appendChild(document.createElement('br'));div.appendChild(sm);out.appendChild(div)})}"
+             r"q.addEventListener('input',go);q.focus();})();")
+
+
+def plain_text(inner):
+    """HTML σελίδας -> απλό κείμενο για τον δείκτη αναζήτησης (χωρίς scripts/styles/ετικέτες)."""
+    t = re.sub(r'(?is)<(script|style)\b.*?</\1>', ' ', inner); t = re.sub(r'<[^>]+>', ' ', t)
+    return re.sub(r'\s+', ' ', html.unescape(t)).strip()[:MAX_INDEX_TEXT]
+
+
+def search_html(ctx, index):
+    """Σελίδα αναζήτησης: ο δείκτης μπαίνει ΜΕΣΑ στη σελίδα (τα δημοσιευμένα αρχεία δεν επιτρέπουν fetch/εξωτερικά scripts)."""
+    data = json.dumps(index, ensure_ascii=False).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+    inner = ("<input id=q type=search placeholder='Γράψε λέξεις…' autocomplete=off style='font:inherit;padding:.4rem .6rem;width:100%;max-width:30rem' aria-label='Αναζήτηση'><div id=res></div>"
+             f"<script type='application/json' id=ix>{data}</script>")
+    p = {'id': 0, 'title': 'Αναζήτηση', 'kind': 'page', 'parent_id': 0, 'body': '', 'slug': 'search'}
+    return page_html(ctx, p, override=(inner, SEARCH_JS))[0]
+
+
+def search_index(ctx, pages_text):
+    return [{'t': p['title'], 'u': ctx.href(p), 'x': pages_text.get(p['id'], '')} for p, _ in ctx.vis if p['kind'] == 'page' or pages_text.get(p['id'])]
+
+
+def preview_search(c, site, root, domains):
+    ctx = Ctx(c, site, root, domains, 'preview'); tx = {}
+    for p, _ in ctx.vis: page_html(ctx, p); tx[p['id']] = plain_text(ctx.last_inner)
+    return search_html(ctx, search_index(ctx, tx))
+
+
+# ---------- εξαγωγή / δημοσίευση ----------
+def build_files(c, sid, domains=()):
+    """-> (files {όνομα: bytes}, μοντέλο). ValueError αν δεν υπάρχουν εμφανίσιμες σελίδες ή το πακέτο είναι πολύ μεγάλο."""
     s = get(c, sid)
     if not s: raise ValueError('Δεν υπάρχει αυτό το site.')
     root = config.load()['data_root']; ctx = Ctx(c, s, root, list(domains), 'export')
     if not ctx.vis: raise ValueError('Το site δεν έχει εμφανίσιμες σελίδες.')
-    files, warns, deck_ids, size = {}, [], {}, 0
+    files, warns, deck_ids, size, tx = {}, [], {}, 0, {}
     for p, _ in ctx.vis:
-        h, w = page_html(ctx, p); files[p['slug'] + '.html'] = h.encode('utf-8'); size += len(files[p['slug'] + '.html'])
+        h, w = page_html(ctx, p); files[p['slug'] + '.html'] = h.encode('utf-8'); size += len(files[p['slug'] + '.html']); tx[p['id']] = plain_text(ctx.last_inner)
         if size > MAX_TOTAL: raise ValueError('Το πακέτο ξεπερνά το όριο μεγέθους (60 MB).')
         warns += [f"{p['title']}: {x}" for x in w]; deck_ids.update(ctx.decks)
         for nm, (rel, fp) in ctx.files.items():
             if fp.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.svg') and nm not in files: files[nm] = fp.read_bytes(); size += len(files[nm])
-    home = ctx.home(); files['index.html'] = files[home['slug'] + '.html']
+    home = ctx.home(); files['index.html'] = files[home['slug'] + '.html']; files['search.html'] = search_html(ctx, search_index(ctx, tx)).encode('utf-8')
     for did, d in deck_ids.items():
         files[f'deck-{did}.html'] = DX.reveal(d, D.slides(c, did), root, publish=True, domains=list(domains)).encode('utf-8')
     if sum(len(v) for v in files.values()) > MAX_TOTAL: raise ValueError('Το πακέτο ξεπερνά το όριο μεγέθους (60 MB).')
-    model = {'title': s['title'] or s['name'], 'theme': s['theme'], 'home': home['slug'] + '.html', 'exported': now(), 'warnings': warns,
+    model = {'title': s['title'] or s['name'], 'theme': s['theme'], 'home': home['slug'] + '.html', 'exported': now(), 'warnings': warns, 'quiz_answers': s['opts']['quiz_answers'],
              'pages': [{'slug': p['slug'], 'file': p['slug'] + '.html', 'title': p['title'], 'kind': p['kind'], 'depth': d, 'parent': next((x['slug'] for x, _ in ctx.vis if x['id'] == p['parent_id']), '')} for p, d in ctx.vis],
              'decks': [{'id': k, 'file': f'deck-{k}.html', 'title': v.get('title') or v['name']} for k, v in deck_ids.items()]}
-    files['data.json'] = json.dumps(model, ensure_ascii=False, indent=1).encode('utf-8')
+    pub = {k: v for k, v in model.items() if k != 'warnings'}                      # οι προειδοποιήσεις (διαδρομές, IDs) δεν μπαίνουν στα αρχεία
+    files['data.json'] = json.dumps(pub, ensure_ascii=False, indent=1).encode('utf-8')
+    return files, model
+
+
+def build_zip(c, sid, domains=()):
+    """-> (zip bytes, όνομα, μοντέλο)."""
+    files, model = build_files(c, sid, domains)
     readme = (f"{model['title']}\nΕξήχθη από το TH-ILEK: {model['exported']}\n\nΑνοίγεις το index.html σε οποιονδήποτε browser (και χωρίς δίκτυο). Οι σελίδες είναι αυτόνομα αρχεία· οι παρουσιάσεις και τα quiz είναι στιγμιότυπο της ώρας της εξαγωγής.\n"
               "Τα ενσωματωμένα βίντεο/προσομοιώσεις (embed) φορτώνουν από το διαδίκτυο μόνο αν πατήσεις «Φόρτωση».\n")
     b = io.BytesIO()
@@ -437,3 +488,12 @@ def build_zip(c, sid, domains=()):
         for n, d in files.items(): z.writestr(n, d)
         z.writestr('README.txt', readme)
     return b.getvalue(), DX.slug(model['title']) + '-site.zip', model
+
+
+def publish_site(c, sid, domains=()):
+    """Δημοσιεύει (ή ενημερώνει) το site στο /p/<slug>/ μέσω publish.save_site. -> slug. Η ίδια διεύθυνση κρατιέται σε επόμενες δημοσιεύσεις."""
+    from . import publish as P
+    files, model = build_files(c, sid, domains); s = get(c, sid)
+    files['README.txt'] = f"{model['title']}\nΔημοσιεύτηκε: {model['exported']}\n".encode('utf-8')
+    slug = s['opts']['pub'] or P.uniq_slug(model['title'] or s['name'])
+    slug = P.save_site(model['title'], files, slug=slug, source='site: ' + s['name']); save_site(c, sid, pub=slug); return slug
