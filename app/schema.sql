@@ -29,7 +29,7 @@ CREATE TABLE question_fav(item_id TEXT NOT NULL, qcode TEXT NOT NULL, added TEXT
 CREATE TABLE qsolution(item_id TEXT NOT NULL, qcode TEXT NOT NULL, question_id INTEGER, iep_id TEXT, sub TEXT, relpath TEXT NOT NULL,   -- λύσεις εκπαιδευτικού από <ID>.<θέμα>-<υπ>.md
   fm TEXT, sections TEXT, quiz TEXT, status TEXT, warn TEXT, mtime REAL, sha TEXT, PRIMARY KEY(item_id,qcode)); -- JSON πεδία· ξαναχτίζεται από τα αρχεία (όχι δεδομένα χρήστη)
 CREATE TABLE schema_version(version INTEGER NOT NULL); -- app/migrations.py: LATEST
-INSERT INTO schema_version(version) VALUES(7);
+INSERT INTO schema_version(version) VALUES(8);
 -- 0.18.0: εργαλειοθήκες, κάδος αρχείων, ιστορικό ενεργειών αρχείων, ρυθμίσεις (δεδομένα χρήστη, διατηρούνται στο rebuild)
 CREATE TABLE IF NOT EXISTS toolbox(slot INTEGER PRIMARY KEY CHECK(slot BETWEEN 1 AND 3), name TEXT NOT NULL, items TEXT NOT NULL DEFAULT '[]', enabled INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS trash(id INTEGER PRIMARY KEY, orig_rel TEXT NOT NULL, trash_rel TEXT NOT NULL, kind TEXT, size INTEGER, deleted TEXT, reason TEXT);
@@ -44,3 +44,7 @@ CREATE TABLE deck(id INTEGER PRIMARY KEY, name TEXT NOT NULL, title TEXT, subtit
 CREATE TABLE deck_slide(id INTEGER PRIMARY KEY, deck_id INTEGER NOT NULL, pos INTEGER NOT NULL, layout TEXT NOT NULL DEFAULT 'content', title TEXT, body TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
   opts TEXT NOT NULL DEFAULT '{}', down INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0, src_item TEXT, src_qcode TEXT, src_unit TEXT, src_part INTEGER, src_sha TEXT, gen_sha TEXT, linked INTEGER NOT NULL DEFAULT 0, updated TEXT);
 CREATE INDEX ix_dslide ON deck_slide(deck_id,pos); -- 0.32: παρουσιάσεις (δεδομένα χρήστη, επιβιώνουν του rebuild)
+CREATE TABLE site(id INTEGER PRIMARY KEY, name TEXT NOT NULL, title TEXT, theme TEXT NOT NULL DEFAULT 'calm', opts TEXT NOT NULL DEFAULT '{}', course_code TEXT, note TEXT, created TEXT, updated TEXT);
+CREATE TABLE site_page(id INTEGER PRIMARY KEY, site_id INTEGER NOT NULL, parent_id INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, slug TEXT NOT NULL, title TEXT, kind TEXT NOT NULL DEFAULT 'page',
+  body TEXT NOT NULL DEFAULT '', opts TEXT NOT NULL DEFAULT '{}', hidden INTEGER NOT NULL DEFAULT 0, updated TEXT);
+CREATE INDEX ix_spage ON site_page(site_id,parent_id,pos); -- 0.34: site builder (δεδομένα χρήστη, επιβιώνουν του rebuild)

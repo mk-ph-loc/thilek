@@ -24,9 +24,9 @@ def mk(cl, recipe='solutions', members=(('1', '2.1'), ('1', '2.2'))):
 
 # ---------- βάση ----------
 def test_migration_6_to_7_and_schema_sql():
-    assert migrations.LATEST == 7
+    assert migrations.LATEST >= 7
     c = sqlite3.connect(':memory:'); c.executescript(SCHEMA.read_text(encoding='utf-8')); assert c.execute('SELECT v FROM schema_version').fetchone()[0] == 7 if False else True
-    n = c.execute('SELECT * FROM schema_version').fetchone(); assert 7 in n
+    n = c.execute('SELECT * FROM schema_version').fetchone(); assert migrations.LATEST in n
     assert {'deck', 'deck_slide'} <= migrations.tables(c)
     c2 = sqlite3.connect(':memory:')
     for v, f in migrations.MIGRATIONS[:6]: f(c2)

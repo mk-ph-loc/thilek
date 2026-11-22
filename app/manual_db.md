@@ -11,7 +11,7 @@
 |---|---|---|
 | {{ok:Τράπεζα}} | `course`, `book`, `section`, `item`, `question`, `question_section(origin=iep/auto)`, `yli_year` | **ξαναχτίζονται** από τα αρχεία |
 | {{info:Ευρετήρια}} | `qsolution`, `wordsrc`, `book_page`, `book_fts`, `q_fts` | **ξαναχτίζονται** (αντίγραφα αρχείων) |
-| {{warn:Δεδομένα χρήστη}} | `exam`, `exam_question`, `question_tag`, `question_fav`, `collection`, `collection_member`, `quiz`, `quiz_item`, `mdoc`, `toolbox`, `trash`, `fileops`, `setting`, `wizard_recipe`, `iepcmp`, `ownitem`, `deck`, `deck_slide` | **αντιγράφονται** όπως είναι |
+| {{warn:Δεδομένα χρήστη}} | `exam`, `exam_question`, `question_tag`, `question_fav`, `collection`, `collection_member`, `quiz`, `quiz_item`, `mdoc`, `toolbox`, `trash`, `fileops`, `setting`, `wizard_recipe`, `iepcmp`, `ownitem`, `deck`, `deck_slide`, `site`, `site_page` | **αντιγράφονται** όπως είναι |
 
 Επιπλέον, μέσα στην Τράπεζα **διατηρούνται** οι δικές σου διορθώσεις: οι συνδέσεις `question_section` με `origin` manual/ai/rejected και ο τύπος/εικόνα ερωτήματος με `*_origin = manual`.
 
@@ -117,6 +117,10 @@ erDiagram
     **`deck`** — μία παρουσίαση: `id`, `name`, `title`, `subtitle`, `recipe` (free, lesson, solutions, review, quiz, exam), `state` (JSON παράμετροι της συνταγής για «Ξαναχτίσιμο»), `style`, `opts` (JSON: bullets ένα-ένα, μετάβαση, αναλογία, αρίθμηση, απαντήσεις), `kind` (0 παρουσίαση · 1 πρότυπο · 2 βιβλιοθήκη διαφανειών), `course_code`, `note`, `created`, `updated`. Γράφεται από το `/decks`· **επιβιώνει του rebuild**.
 
     **`deck_slide`** — μία διαφάνεια: `deck_id`, `pos` (1..n), `layout`, `title`, `body` (Markdown με οδηγίες `:::`), `notes` (σημειώσεις ομιλητή), `opts` (JSON: bullets, φόντο, μετάβαση), `down` (1 = κάθετα κάτω από την προηγούμενη), `hidden`, πηγή `src_item`+`src_qcode`+`src_unit`+`src_part` (όταν προέρχεται από λύση), `src_sha` (το `qsolution.sha` τη στιγμή της αντιγραφής → ⚠ «η λύση άλλαξε»), `gen_sha` (ό,τι παρήγαγε η συνταγή → ✎ «την άλλαξες εσύ»), `linked`, `updated`. Χωρίς ξένα κλειδιά· η διαγραφή παρουσίασης σβήνει ρητά τις διαφάνειές της. **Επιβιώνει του rebuild**.
+
+    **`site`** — ένα site (σύνολο σελίδων με μενού): `id`, `name`, `title`, `theme` (`calm`, `paper`, `dark`), `opts` (JSON: `footer`, `home` = id σελίδας αρχικής), `course_code`, `note`, `created`, `updated`. Γράφεται από το `/sites`· **επιβιώνει του rebuild**.
+
+    **`site_page`** — μία σελίδα του site: `site_id`, `parent_id` (0 = ρίζα· χωρίς ξένα κλειδιά), `pos` (1..n μέσα στον ίδιο γονέα), `slug` (μοναδικό μέσα στο site, ascii), `title`, `kind` (`page` ή `section`), `body` (Markdown με οδηγίες `:::`), `opts` (JSON), `hidden` (κρυφή: δεν μπαίνει στο μενού/εξαγωγή), `updated`. Το μενού βγαίνει από `parent_id`+`pos`· **επιβιώνει του rebuild**.
 
 === "Ευρετήρια"
     **`wordsrc`** — ό,τι διαβάστηκε από τα Word του ΙΕΠ (`<ID>.docx`, `<ID>_SOLUTION.docx`): `item_id`, `kind` (`statement`/`solution`), `relpath`, `sha`, `mtime`, `n_par`, `n_eq`, `n_img`, `n_q`, `pts`, `status` (`ok`/`warn`/`error`), `warn` (JSON), `text` (με εξισώσεις σε LaTeX), `images` (JSON). Γράφεται από το «Σάρωση αρχείων Word» και το rebuild· ξαναχτίζεται από τα αρχεία.

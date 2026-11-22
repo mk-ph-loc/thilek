@@ -43,7 +43,16 @@ def _v7(c):
     """0.32.0: παρουσιάσεις (deck) και διαφάνειες (deck_slide)· δεδομένα χρήστη, διατηρούνται στο rebuild. Χωρίς ξένα κλειδιά, όπως οι άλλοι πίνακες χρήστη."""
     c.executescript(DECK)
 
-MIGRATIONS = [(1, _v1), (2, _v2), (3, _v3), (4, _v4), (5, _v5), (6, _v6), (7, _v7)]
+SITE = """CREATE TABLE IF NOT EXISTS site(id INTEGER PRIMARY KEY, name TEXT NOT NULL, title TEXT, theme TEXT NOT NULL DEFAULT 'calm', opts TEXT NOT NULL DEFAULT '{}', course_code TEXT, note TEXT, created TEXT, updated TEXT);
+CREATE TABLE IF NOT EXISTS site_page(id INTEGER PRIMARY KEY, site_id INTEGER NOT NULL, parent_id INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, slug TEXT NOT NULL, title TEXT, kind TEXT NOT NULL DEFAULT 'page',
+  body TEXT NOT NULL DEFAULT '', opts TEXT NOT NULL DEFAULT '{}', hidden INTEGER NOT NULL DEFAULT 0, updated TEXT);
+CREATE INDEX IF NOT EXISTS ix_spage ON site_page(site_id,parent_id,pos);"""
+
+def _v8(c):
+    """0.34.0: site builder (site, site_page)· δεδομένα χρήστη, διατηρούνται στο rebuild. Χωρίς ξένα κλειδιά (parent_id 0 = ρίζα), η διαγραφή site σβήνει ρητά τις σελίδες του."""
+    c.executescript(SITE)
+
+MIGRATIONS = [(1, _v1), (2, _v2), (3, _v3), (4, _v4), (5, _v5), (6, _v6), (7, _v7), (8, _v8)]
 LATEST = MIGRATIONS[-1][0]
 
 def tables(c): return {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}

@@ -31,7 +31,7 @@ class Fence:
         return False
 
 
-def parse(body):
+def parse(body, directives=DIRECTIVES):
     """body -> (blocks, warnings). Μπλοκ: {'t':'md','text'} · {'t':'cols','cols':[..]} · {'t':'quiz','yaml'} · {'t':'step','text'} · {'t':'embed','url','caption'}."""
     blocks, warns, md, fence = [], [], [], Fence(); cur = None
 
@@ -53,6 +53,7 @@ def parse(body):
             blocks.append({'t': 'cols', 'cols': cols})
         elif name == 'quiz': blocks.append({'t': 'quiz', 'yaml': text})
         elif name == 'step': blocks.append({'t': 'step', 'text': text})
+        elif name != 'embed': blocks.append({'t': name, 'arg': (arg or '').strip(), 'text': text})          # οδηγίες του site builder (quiz-ref, deck-ref, file, callout)
         else:
             url, params, unk = EM.split_arg(arg)
             if unk: warns.append('embed: αγνοήθηκαν «' + ' '.join(unk) + '» (επιτρέπονται ratio=16:9|4:3|1:1, h=200..700, start=δευτερόλεπτα)')
@@ -62,7 +63,7 @@ def parse(body):
         if cur is None:
             infence = fence.feed(line)
             m = None if infence else DIR_LINE.match(line)
-            if m and m.group(1) in DIRECTIVES: flush_md(); cur = [m.group(1), m.group(2), []]; fence = Fence(); continue
+            if m and m.group(1) in directives: flush_md(); cur = [m.group(1), m.group(2), []]; fence = Fence(); continue
             if m: warns.append(f'άγνωστη οδηγία «::: {m.group(1)}» (μένει ως κείμενο)')
             md.append(line)
         else:
@@ -74,7 +75,7 @@ def parse(body):
     return blocks, warns
 
 
-def blocks(body): return parse(body)[0]
+def blocks(body, directives=DIRECTIVES): return parse(body, directives)[0]
 
 
 def compose(bl):
@@ -87,6 +88,7 @@ def compose(bl):
         elif t == 'cols': out.append('::: cols\n' + '\n|||\n'.join(c.strip('\n') for c in b.get('cols') or ['']) + '\n:::')
         elif t == 'quiz': out.append('::: quiz\n' + (b.get('yaml') or '').strip('\n') + '\n:::')
         elif t == 'step': out.append('::: step\n' + (b.get('text') or '').strip('\n') + '\n:::')
+        elif t in ('quiz-ref', 'deck-ref', 'file', 'callout'): out.append(f"::: {t}" + (' ' + b['arg'] if b.get('arg') else '') + ('\n' + b['text'].strip('\n') if (b.get('text') or '').strip() else '') + '\n:::')
         elif t == 'embed': out.append(f"::: embed {EM.arg_text(b.get('url', ''), b.get('params'))}".rstrip() + ('\n' + b['caption'].strip('\n') if (b.get('caption') or '').strip() else '') + '\n:::')
     return '\n\n'.join(out)
 
