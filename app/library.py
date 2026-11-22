@@ -138,7 +138,7 @@ def sol_controls(style='kids'):
     pre = ''.join(f"<option value='{','.join(o)}'>{html.escape(t)}</option>" for _, t, o in PRESETS)
     sty = ''.join(f"<option value={k}{' selected' if k == (style if style in STYLES else 'kids') else ''}>{html.escape(v['label'])}</option>" for k, v in STYLES.items())
     return (f"{SOLCTL_CSS}<div class=solctl><div class=solrow>Ενότητες και σειρά: <select class=solpre><option value=''>— έτοιμη διάταξη —</option>{pre}</select> <small>ή τσεκάρισμα και ↑↓</small></div><ul class=solord>{items}</ul>"
-            f"<div class=solrow>τίτλος <input name=sol_title size=22 value='Λύσεις εκπαιδευτικού'> στυλ <select name=sstyle>{sty}</select> <label><input type=checkbox name=hide value=1 checked> κρυφές λύσεις με κλικ (HTML μαθητή)</label> <label><input type=checkbox name=frag value=1> bullets ένα-ένα (Reveal)</label> <a href='/manual/reveal'>βοήθεια Reveal</a></div>"
+            f"<div class=solrow>τίτλος <input name=sol_title size=22 value='Λύσεις εκπαιδευτικού'> στυλ <select name=sstyle>{sty}</select> <label><input type=checkbox name=hide value=1 checked> κρυφές λύσεις με κλικ (HTML μαθητή)</label> <label><input type=checkbox name=frag value=1> bullets ένα-ένα (Reveal, PowerPoint)</label> <a href='/manual/reveal'>βοήθεια Reveal</a> <a href='/manual/pandoc'>βοήθεια Pandoc</a></div>"
             "<div class=solbtn><button name=act value=reveal>Reveal.js</button> <button name=act value=html>HTML μαθητή</button> <button name=act value=solmd>Markdown/Word</button> <button name=act value=moodle>Moodle XML</button> <button name=act value=pptx title='Χρειάζεται Pandoc στον server'>PowerPoint (.pptx)</button></div></div>"
             "<script src='/static/solctl.js' defer></script>")
 

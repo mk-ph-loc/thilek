@@ -2,6 +2,7 @@
 import io, re, shutil, zipfile
 import pytest
 from fastapi import HTTPException
+from tests.test_docs import cl  # noqa: F401
 from tests.test_qsol import env, A, H  # noqa: F401
 from app import solexport as X
 
@@ -53,3 +54,37 @@ def test_pptx_images_safe(tmp_path):
     o = X._pptx_images(t, 'B', str(tmp_path))
     assert str(tmp_path / 'B' / 'images' / 'a.png') in o.split('```')[0] and o.count('![') == 1 + 1   # ok + μέσα στο fence
     assert '*[svg]*' in o and '*[up]*' in o and '*[url]*' in o
+
+
+def test_pandoc_help_page(env):
+    cl, tmp = env
+    r = cl.get('/manual/pandoc', auth=A); assert r.status_code == 200 and 'https://pandoc.org/getting-started.html' in r.text and 'Οδηγός εφαρμογής' in r.text
+    r = cl.get('/manual/reveal', auth=A); assert 'https://revealjs.com/fragments/' in r.text and 'Οδηγός εφαρμογής' in r.text and 'Βασικά χαρακτηριστικά' in r.text
+    d = cl.get('/manual/pandoc.md', auth=A); assert 'thilek-pandoc-help.md' in d.headers['content-disposition']
+
+
+@pandoc
+def test_pptx_fragments_optional(env):
+    cl, tmp = env
+    n = lambda r: b'<p:timing' in b''.join(zipfile.ZipFile(io.BytesIO(r.content)).read(x) for x in zipfile.ZipFile(io.BytesIO(r.content)).namelist() if x.startswith('ppt/slides/slide'))
+    a = cl.post('/select/act', data={'act': 'pptx', 'qids': ['1']}, auth=A, headers=H)
+    b = cl.post('/select/act', data={'act': 'pptx', 'qids': ['1'], 'frag': '1'}, auth=A, headers=H)
+    assert a.status_code == b.status_code == 200 and not n(a) and n(b)
+
+
+def test_helpmd_option_in_zip(cl):
+    from tests.test_publish import with_solutions, recipe
+    with_solutions(cl)
+    on = zipfile.ZipFile(io.BytesIO(cl.post(f'/wizard/{recipe(cl)}/generate', auth=A, headers=H).content)).namelist()
+    off = zipfile.ZipFile(io.BytesIO(cl.post(f'/wizard/{recipe(cl, helpmd="")}/generate', auth=A, headers=H).content)).namelist()
+    assert 'reveal-help.md' in on and 'reveal-help.md' not in off
+
+
+@pandoc
+def test_wizard_pptx_zip_with_help(cl):
+    from tests.test_publish import with_solutions, recipe
+    with_solutions(cl)
+    rid = recipe(cl, fmt='pptx'); r = cl.post(f'/wizard/{rid}/generate', auth=A, headers=H)
+    z = zipfile.ZipFile(io.BytesIO(r.content)); assert r.headers['content-type'] == 'application/zip' and sorted(z.namelist()) == ['pandoc-help.md', 'thilek-presentation.pptx']
+    rid = recipe(cl, fmt='pptx', helpmd=''); r = cl.post(f'/wizard/{rid}/generate', auth=A, headers=H)
+    assert 'presentationml' in r.headers['content-type']

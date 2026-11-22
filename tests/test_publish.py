@@ -11,9 +11,9 @@ def with_solutions(cl):
     assert cl.post('/lyseis/scan', auth=A, headers=H, follow_redirects=False).status_code in (200, 303)
 
 
-def recipe(cl, fmt='reveal', gran='item', store='download', qids=('1', '2', '3')):
+def recipe(cl, fmt='reveal', gran='item', store='download', qids=('1', '2', '3'), helpmd='1', frag=''):
     rid = new(cl); post(cl, rid, 1, action='add', qids=list(qids)); post(cl, rid, 2, mode='each', gran=gran, order='item', unsel='omit', go='next')
-    post(cl, rid, 4, format=fmt, go='next'); post(cl, rid, 5, title='Σειρά Ι', store=store, go='next'); return rid
+    post(cl, rid, 4, format=fmt, go='next'); post(cl, rid, 5, title='Σειρά Ι', store=store, helpmd=helpmd, frag=frag, go='next'); return rid
 
 
 def bauth(pw, user='mathitis'): return {'Authorization': 'Basic ' + base64.b64encode(f'{user}:{pw}'.encode()).decode()}

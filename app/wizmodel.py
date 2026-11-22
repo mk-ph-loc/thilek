@@ -17,7 +17,7 @@ CRITERIA = (('q', 'Λέξεις-κλειδιά'), ('qtype', 'Τύπος ερωτ
 CRITERIA_KEYS = tuple(k for k, _ in CRITERIA)
 
 DEFAULT = {'criteria': {}, 'members': [], 'mode': 'merge', 'gran': 'item', 'order': 'item', 'points': {}, 'target': None, 'unsel': 'omit', 'manual_sel': [],
-           'format': 'excel', 'title': 'Αναφορά ασκήσεων', 'style': 'kids', 'sx': [], 'hide': True, 'frag': False, 'mdmode': 'image', 'numbering': 'new',
+           'format': 'excel', 'title': 'Αναφορά ασκήσεων', 'style': 'kids', 'sx': [], 'hide': True, 'frag': False, 'helpmd': True, 'mdmode': 'image', 'numbering': 'new',
            'link_prefix': 'pdf/', 'bundle': False, 'store': 'download', 'preview': True,
            'x_school': '', 'x_class': '', 'x_date': '', 'x_dur': '', 'x_sub': '', 'x_notes': '', 'x_course': '', 'x_tpl': 'default', 'x_ver': 'student', 'x_grp': 'item', 'x_mode': 'image',
            'cmp': False, 'm_cat': 'single', 'm_tags': True, 'g_name': 'required', 'g_img': 'default'}

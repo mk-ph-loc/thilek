@@ -141,7 +141,7 @@ def pptx_markdown(rows, title, include, root, frag=True):
                     out += t
     return normalize_math_md('\n'.join(out))
 
-def pptx_bytes(rows, title, include, root):
+def pptx_bytes(rows, title, include, root, frag=False):
     """Pandoc → .pptx (οι τύποι $..$ γίνονται εξισώσεις Office). Σταθερά ορίσματα, χωρίς shell· raw HTML/TeX/attributes απενεργοποιημένα· όριο χρόνου 90 s."""
     pd = pandoc_path()
     if not pd: raise HTTPException(422, 'Το Pandoc δεν είναι εγκατεστημένο στον server (apt install pandoc). Η εξαγωγή PowerPoint χρειάζεται Pandoc.')
@@ -149,7 +149,7 @@ def pptx_bytes(rows, title, include, root):
     with tempfile.TemporaryDirectory() as td:
         out = pathlib.Path(td) / 'out.pptx'
         cmd = [pd, '-f', 'markdown-raw_html-raw_attribute-raw_tex-yaml_metadata_block-pandoc_title_block-link_attributes-fenced_divs-bracketed_spans-native_divs-native_spans', '-t', 'pptx',
-               '--slide-level=2', '--metadata', f'title={title}', '-o', str(out)]
+               '--slide-level=2', '--metadata', f'title={title}', '-o', str(out)] + (['-i'] if frag else [])
         try: pr = subprocess.run(cmd, input=md.encode('utf-8'), capture_output=True, timeout=90, cwd=td, env={'PATH': os.environ.get('PATH', '/usr/bin:/bin'), 'HOME': td})
         except subprocess.TimeoutExpired: raise HTTPException(422, 'Το Pandoc άργησε πάνω από 90 δευτερόλεπτα· επίλεξε λιγότερες λύσεις.')
         if pr.returncode != 0 or not out.is_file(): raise HTTPException(422, 'Το Pandoc απέτυχε: ' + pr.stderr.decode('utf-8', 'replace')[:300])
@@ -273,7 +273,7 @@ def export(c, act, keys, sx=None, title='', theme='', hide=True, frag=False):
     if act == 'reveal':
         return Response(reveal_html(rows, title, inc, style, root, frag), media_type='text/html; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="thilek-reveal.html"'})
     if act == 'pptx':
-        return Response(pptx_bytes(rows, title, inc, root), media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', headers={'Content-Disposition': 'attachment; filename="thilek-presentation.pptx"'})
+        return Response(pptx_bytes(rows, title, inc, root, frag), media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', headers={'Content-Disposition': 'attachment; filename="thilek-presentation.pptx"'})
     if act == 'html':
         from .solhtml import student_html
         return Response(student_html(rows, title, inc, style, root, bool(hide)), media_type='text/html; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="thilek-mathitis.html"'})
