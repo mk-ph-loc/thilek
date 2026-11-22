@@ -403,3 +403,8 @@ def test_examvar_unit():
     assert {r['grp'] for r in b} == {1, 2} and [r['pos'] for r in b if r['grp'] == 1] == [1, 2, 3]
     assert X.variant([], 1, 'Β') == [] and X.variant(rows[:1], 1, 'Β')[0]['orig'] == 'Α1' and X.clean_ver('c') == 'Γ' and X.clean_ver('x') == '' and X.clean_seed('a<b>9') == 'ab9'
     assert 'Σύνολο' in X.spec_html(rows, {'mcq': 'ΠΕ'}) and '30 μον.' in X.spec_html(rows, {'mcq': 'ΠΕ'}) and 'κενό' in X.spec_html([], {})
+
+
+def test_tables_js_served_and_included(client):
+    r = client.get('/static/tables.js', auth=A); assert r.status_code == 200 and 'javascript' in r.headers['content-type'] and 'thilek-colw' in r.text and 'localStorage' in r.text and 'innerHTML' not in r.text
+    assert "/static/tables.js" in client.get('/review', auth=A).text and "/static/tables.js" in client.get('/quizzes', auth=A).text
