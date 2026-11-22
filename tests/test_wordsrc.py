@@ -87,6 +87,14 @@ def test_scan_ok_warn_solution_and_errors(cl):
     r = con().execute("SELECT status FROM wordsrc WHERE item_id='1' AND kind='solution'").fetchone(); assert r[0] == 'ok'
 
 
+def test_scan_works_with_plain_tuple_connection(cl):
+    """Όπως στο thilek-rebuild: σύνδεση χωρίς row_factory (παλιότερα: «tuple indices must be integers»)."""
+    seed(4); o = orig(cl); make(o / '1.docx', GOOD); make(o / '1_SOLUTION.docx', GOOD)
+    c = sqlite3.connect(os.environ['THILEK_DB']); assert c.row_factory is None
+    res = wordsrc.scan(c, os.environ['THILEK_ROOT'], 'C'); assert res['files'] == 2 and res['errors'] == 0 and c.row_factory is None
+    assert c.execute('SELECT count(*) FROM wordsrc').fetchone()[0] == 2; c.close()
+
+
 def test_word_with_unknown_item_and_bad_name_reported_not_stored(cl):
     seed(4); o = orig(cl); make(o / '999.docx', GOOD); (o / 'x.docx').write_bytes(b'x')
     res = wordsrc.scan(con(), os.environ['THILEK_ROOT']); assert res['errors'] == 1 and any('999' in m for m in res['messages']) and any('όνομα εκτός μορφής' in m for m in res['messages'])

@@ -1,6 +1,6 @@
 """0.27: ανάγνωση των Word του ΙΕΠ (<ID>.docx, <ID>_SOLUTION.docx στο orig/): κείμενο, εξισώσεις (OMML→LaTeX), εικόνες, σύγκριση με τα ερωτήματα του PDF.
 Παράγωγος πίνακας wordsrc (ξαναχτίζεται από τα αρχεία, δεν είναι δεδομένα χρήστη). Τα αρχεία Word δεν τροποποιούνται ποτέ."""
-import datetime, hashlib, html, json, pathlib, re, sys, zipfile
+import datetime, sqlite3, hashlib, html, json, pathlib, re, sys, zipfile
 from xml.etree import ElementTree as ET
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -128,6 +128,13 @@ def compare(word_qs, db_qs):
 
 
 def scan(c, data_root, course=None):
+    """Ανεξάρτητο από το row_factory της σύνδεσης (το thilek-rebuild δίνει σύνδεση με απλές πλειάδες)."""
+    old = c.row_factory; c.row_factory = sqlite3.Row
+    try: return _scan(c, data_root, course)
+    finally: c.row_factory = old
+
+
+def _scan(c, data_root, course=None):
     """Σαρώνει τα .docx στο <μάθημα>/04_TRAPEZA/orig/ και ξαναγράφει τον wordsrc. -> {files, ok, warn, errors, messages}."""
     root = pathlib.Path(data_root); res = {'files': 0, 'ok': 0, 'warn': 0, 'errors': 0, 'messages': []}
     codes = [r[0] for r in c.execute('SELECT code FROM course')] if not course else [course]

@@ -1,4 +1,6 @@
 # Αλλαγές
+## 0.37.1
+- **Διόρθωση:** το `thilek-rebuild` τελείωνε με «Word: η σάρωση απέτυχε: tuple indices must be integers or slices, not str» όταν υπήρχαν αρχεία Word. Η `wordsrc.scan` τώρα δουλεύει με οποιαδήποτε σύνδεση (ορίζει προσωρινά `sqlite3.Row`). Νέο τεστ με σύνδεση χωρίς row_factory. Μετά την εγκατάσταση τρέξε ξανά `thilek-rebuild` ή «Σάρωση Word» στη σελίδα Word.
 ## 0.37.0
 - **Εξάσκηση μαθητή** (`app/practice.py`): αυτόνομη σελίδα HTML από quiz (`/quizzes/<id>/practice`) με τυχαία σειρά, επανάληψη των λαθών σε γύρους και τοπική πρόοδο στον browser (localStorage με try/catch· στα sandboxed /p/ μπορεί να μη δουλεύει). DOM μόνο με `textContent`, δεδομένα ως ασφαλές JSON.
 - **Flashcards** (`/quizzes/<id>/cards`), **Anki TSV** (`/quizzes/<id>/anki.tsv`: `#separator:tab`, `#html:true`, `#tags column:3`, πεδία σε εισαγωγικά), **δημοσίευση** στο `/p/quiz-<id>-practice|cards` με σταθερή διεύθυνση.
