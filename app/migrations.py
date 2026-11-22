@@ -25,7 +25,11 @@ def _v4(c):
     """0.25.0: σύγκριση απαντήσεων με το ΙΕΠ (δεδομένα χρήστη λόγω χειροκίνητων αλλαγών, διατηρούνται στο rebuild)."""
     c.execute("CREATE TABLE IF NOT EXISTS iepcmp(item_id TEXT NOT NULL, qcode TEXT NOT NULL, qn INTEGER NOT NULL, kind TEXT, mine TEXT, iep TEXT, auto TEXT, status TEXT, manual INTEGER NOT NULL DEFAULT 0, note TEXT, updated TEXT, PRIMARY KEY(item_id,qcode,qn))")
 
-MIGRATIONS = [(1, _v1), (2, _v2), (3, _v3), (4, _v4)]
+def _v5(c):
+    """0.26.0: τίτλος/έτος/σημείωση για δικά μου θέματα και πανελλήνιες (δεδομένα χρήστη)."""
+    c.execute("CREATE TABLE IF NOT EXISTS ownitem(item_id TEXT PRIMARY KEY, title TEXT, year TEXT, note TEXT)")
+
+MIGRATIONS = [(1, _v1), (2, _v2), (3, _v3), (4, _v4), (5, _v5)]
 LATEST = MIGRATIONS[-1][0]
 
 def tables(c): return {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}

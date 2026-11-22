@@ -32,6 +32,18 @@ def coverage(c, upto, frm=0, mode='full', cap=8):
         if all(good(a, b) for a, b in secs): ok.add(qid)
     return ok
 
+SRC = (('', '— όλες —'), ('TTDD', 'Τράπεζα ΙΕΠ'), ('PAN', 'Πανελλήνιες'), ('OWN', 'Δικά μου'))
+SRC_KEYS = ('TTDD', 'PAN', 'OWN')
+def src_opts(cur): return ''.join(f"<option value='{v}'{' selected' if cur == v else ''}>{t}</option>" for v, t in SRC)
+
+def active_course(c):
+    """Κωδικός ενεργού μαθήματος (ρύθμιση course_active)· '' = όλα. Αγνοείται αν δεν υπάρχει πια στη βάση."""
+    try:
+        r = c.execute("SELECT v FROM setting WHERE k='course_active'").fetchone()
+        if r and r[0] and c.execute('SELECT 1 FROM course WHERE code=?', (r[0],)).fetchone(): return r[0]
+    except Exception: pass
+    return ''
+
 def select_questions(c, f, limit=LIMIT):
     w, a = [], []
     qt = [t for t in f.get('qtype', []) if t in TYPES]
@@ -43,6 +55,9 @@ def select_questions(c, f, limit=LIMIT):
     if f.get('fav') == '1': w.append('EXISTS (SELECT 1 FROM question_fav v WHERE v.item_id=q.item_id AND v.qcode=q.code)')
     if f.get('lsol') in ('0', '1'): w.append(('' if f['lsol'] == '1' else 'NOT ') + 'EXISTS (SELECT 1 FROM qsolution s WHERE s.item_id=q.item_id AND s.qcode=q.code)')
     if str(f.get('chapter', '')).isdigit(): w.append("q.id IN (SELECT qs.question_id FROM question_section qs JOIN section s ON s.id=qs.section_id WHERE s.code LIKE ? AND qs.origin!='rejected')"); a.append(f['chapter'] + '.%')
+    if f.get('src') in SRC_KEYS: w.append('i.source=?'); a.append(f['src'])
+    ac = active_course(c)
+    if ac: w.append('i.course_code=?'); a.append(ac)
     tags = split_tags(f.get('tag', ''))
     if tags and f.get('tagmode') == 'all':
         for t in tags: w.append('EXISTS (SELECT 1 FROM question_tag t WHERE t.item_id=q.item_id AND t.qcode=q.code AND t.tag=?)'); a.append(t)
@@ -70,7 +85,7 @@ def chapter_opts(c, cur=''):
     chs = sorted({r[0].split('.')[0] for r in c.execute('SELECT code FROM section') if r[0] and r[0].split('.')[0].isdigit()}, key=int)
     return "<option value=''>— όλα —</option>" + ''.join(f"<option value={n}{' selected' if str(cur) == n else ''}>Κεφάλαιο {n}</option>" for n in chs)
 
-FILTER_KEYS = ('qtype', 'image', 'yli', 'section', 'chapter', 'position', 'tag', 'tagmode', 'q', 'fav', 'lsol')   # lsol: λύση εκπαιδευτικού 1/0 (το «sol» είναι ήδη η εικόνα λύσης στο /q)
+FILTER_KEYS = ('qtype', 'image', 'yli', 'section', 'chapter', 'position', 'tag', 'tagmode', 'q', 'fav', 'lsol', 'src')   # lsol: λύση εκπαιδευτικού 1/0 (το «sol» είναι ήδη η εικόνα λύσης στο /q)
 LSOL = (('', '— όλα —'), ('1', 'με λύση'), ('0', 'χωρίς λύση'))
 def lsol_opts(cur): return ''.join(f"<option value='{v}'{' selected' if cur == v else ''}>{t}</option>" for v, t in LSOL)
 def sol_link(r): return f"<a href='/lysi/{html.escape(r['item_id'])}/{html.escape(r['code'])}' title='λύση εκπαιδευτικού'>✎</a>" if r.get('has_sol') else ''
@@ -132,8 +147,8 @@ def expand(c, ids, qids):
 
 # ---------- σελίδες ----------
 @router.get('/browse', response_class=HTMLResponse, dependencies=[Depends(auth)])
-def browse(request: Request, qtype: str = '', image: str = '', yli: str = '', section: str = '', position: str = '', tag: str = '', tagmode: str = 'any', q: str = '', fav: str = '', chapter: str = '', thumbs: int = 0, exam: str = '', none: str = '', lsol: str = ''):
-    c = db(); f = {'qtype': [qtype] if qtype else [], 'image': image, 'yli': yli.strip(), 'section': section.strip(), 'position': position, 'tag': tag, 'tagmode': tagmode, 'q': q, 'fav': fav, 'chapter': chapter, 'lsol': lsol}
+def browse(request: Request, qtype: str = '', image: str = '', yli: str = '', section: str = '', position: str = '', tag: str = '', tagmode: str = 'any', q: str = '', fav: str = '', chapter: str = '', thumbs: int = 0, exam: str = '', none: str = '', lsol: str = '', src: str = ''):
+    c = db(); f = {'qtype': [qtype] if qtype else [], 'image': image, 'yli': yli.strip(), 'section': section.strip(), 'position': position, 'tag': tag, 'tagmode': tagmode, 'q': q, 'fav': fav, 'chapter': chapter, 'lsol': lsol, 'src': src}
     rows = select_questions(c, f)
     sel = "<option value=''>— όλοι —</option>" + TYPE_OPTS(qtype)
     img = ''.join(f"<option value='{v}'{' selected' if image == v else ''}>{t}</option>" for v, t in (('', '— όλα —'), ('1', 'με εικόνα'), ('0', 'χωρίς εικόνα')))
@@ -251,7 +266,7 @@ def filter_card(c, f, action, hidden=None, thumbs=0, button='Εμφάνιση'):
     hid = ''.join(f"<input type=hidden name={E(k)} value='{E(str(v))}'>" for k, v in (hidden or {}).items())
     return (f"<form method=get action='{E(action)}' class=filters>{hid}" + fld('Λέξεις-κλειδιά', f"<input name=q value='{E(f.get('q', ''))}' size=16>") + fld('Τύπος', f"<select name=qtype>{sel}</select>")
             + fld('Κεφάλαιο', f"<select name=chapter>{chapter_opts(c, f.get('chapter', ''))}</select>") + fld('Εικόνα', f"<select name=image>{img}</select>") + fld('Θέμα', f"<select name=position>{pos}</select>")
-            + fld('Αγαπημένα', f"<select name=fav>{favo}</select>") + fld('Ενότητα ΙΕΠ', f"<input name=yli value='{E(f.get('yli', ''))}' size=5>") + fld('Υποενότητα', f"<input name=section value='{E(f.get('section', ''))}' size=6>")
+            + fld('Αγαπημένα', f"<select name=fav>{favo}</select>") + fld('Πηγή', f"<select name=src>{src_opts(f.get('src', ''))}</select>") + fld('Ενότητα ΙΕΠ', f"<input name=yli value='{E(f.get('yli', ''))}' size=5>") + fld('Υποενότητα', f"<input name=section value='{E(f.get('section', ''))}' size=6>")
             + fld('Ετικέτες', f"<input name=tag value='{E(f.get('tag', ''))}' size=14>") + fld('Λογική ετικετών', tm)
             + chk('μικρογραφίες', f"<input type=checkbox name=thumbs value=1{' checked' if thumbs else ''}>") + f"<button>{E(button)}</button></form>")
 

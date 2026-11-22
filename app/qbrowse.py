@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from .main_auth import auth
 from .review import db, page, html, same_origin, TYPES, TYPE_OPTS, fld
-from .library import select_questions, star, chapter_opts, action_bar, FILTER_KEYS, lsol_opts
+from .library import select_questions, star, chapter_opts, action_bar, FILTER_KEYS, lsol_opts, src_opts
 
 router = APIRouter()
 E = html.escape
@@ -59,7 +59,7 @@ def view(qid: int, request: Request, sol: int = 0):
     favo = f"<option value=''>— όλα —</option><option value=1{' selected' if f['fav'] == '1' else ''}>μόνο αγαπημένα</option>"
     flt = ("<form method=get action='/q/start' class=filters>" + fld('Τύπος', f"<select name=qtype>{sel}</select>") + fld('Κεφάλαιο', f"<select name=chapter>{chapter_opts(c, f['chapter'])}</select>")
            + fld('Εικόνα', f"<select name=image>{img}</select>") + fld('Θέμα', f"<select name=position>{pos_o}</select>") + fld('Αγαπημένα', f"<select name=fav>{favo}</select>")
-           + fld('Λύση εκπαιδευτικού', f"<select name=lsol>{lsol_opts(f['lsol'])}</select>") + fld('Ενότητα ΙΕΠ', f"<input name=yli value='{E(f['yli'])}' size=5>") + fld('Υποενότητα', f"<input name=section value='{E(f['section'])}' size=6>") + fld('Ετικέτες', f"<input name=tag value='{E(f['tag'])}' size=14>")
+           + fld('Λύση εκπαιδευτικού', f"<select name=lsol>{lsol_opts(f['lsol'])}</select>") + fld('Πηγή', f"<select name=src>{src_opts(f['src'])}</select>") + fld('Ενότητα ΙΕΠ', f"<input name=yli value='{E(f['yli'])}' size=5>") + fld('Υποενότητα', f"<input name=section value='{E(f['section'])}' size=6>") + fld('Ετικέτες', f"<input name=tag value='{E(f['tag'])}' size=14>")
            + fld('Λέξεις', f"<input name=q value='{E(f['q'])}' size=14>") + f"<input type=hidden name=tagmode value='{E(f['tagmode'])}'><button>Εφαρμογή φίλτρων</button> <a href='/browse?{qs()}'>λίστα</a></form>")
     has_sol = bool(r['sol_geo'])
     solt = (f"<a href='/q/{qid}?{qs({} if sol else {'sol': 1})}'>{'απόκρυψη λύσης' if sol else 'εμφάνιση λύσης'}</a>" if has_sol else '<small>δεν υπάρχει εικόνα λύσης για το ερώτημα</small>')

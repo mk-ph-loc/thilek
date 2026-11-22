@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from . import config, settings, wizmodel as M, wizexam, wizquiz
 from .main_auth import auth
 from .review import db, page, html, same_origin, fld, chk, TYPE_OPTS
-from .library import select_questions, filters_of, chapter_opts, lsol_opts
+from .library import select_questions, filters_of, chapter_opts, lsol_opts, src_opts
 from .solstyle import UNITS, STYLES
 
 router = APIRouter()
@@ -107,6 +107,7 @@ def filter_form(c, rid, f, on):
     add('section', 'Υποενότητα', f"<input class=r-txt name=section value='{E(f.get('section', ''))}' size=6>")
     add('tag', 'Ετικέτες', f"<input class=r-txt name=tag value='{E(f.get('tag', ''))}' size=14>")
     add('lsol', 'Λύση εκπαιδευτικού', f"<select class=r-list name=lsol>{lsol_opts(f.get('lsol', ''))}</select>")
+    add('src', 'Πηγή', f"<select class=r-list name=src>{src_opts(f.get('src', ''))}</select>")
     add('upto', 'Ύλη από–μέχρι σελίδα', f"<input class=r-txt name=frm value='{E(f.get('frm', ''))}' size=4> – <input class=r-txt name=upto value='{E(f.get('upto', ''))}' size=4>")
     return f"<form method=get action='/wizard/{rid}/1' class=filters>{''.join(ctl)}<button>Εμφάνιση</button></form><p><small>Ποια κριτήρια φαίνονται ρυθμίζεται στις <a href='/settings'>Ρυθμίσεις</a>.</small></p>"
 

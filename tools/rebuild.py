@@ -12,15 +12,32 @@ COURSES = [{'code': 'B-ILEKTROTECHNIA', 'title': 'Ηλεκτροτεχνία', '
             'xlsx': '04_TRAPEZA/iep_index_219.xlsx', 'book': '02_VIVLIA/24-0332-02-V3_Ilektrotechnia_B-G-EPAL_Vivlio-Mathiti.pdf',
             'book_title': 'Ηλεκτροτεχνία Β΄ & Γ΄ ΕΠΑ.Λ.', 'pdf_offset': 1}]
 
+def extra_courses(root):
+    """Επιπλέον μαθήματα από <data_root>/courses.json (λίστα· κλειδιά όπως στο COURSES, ή {code,title,grade,own_only:true} για μάθημα μόνο με δικά μου/πανελλήνια θέματα)."""
+    p = pathlib.Path(root) / 'courses.json'; out = []
+    if not p.exists(): return out
+    try: data = json.loads(p.read_text(encoding='utf-8'))
+    except (OSError, ValueError) as ex: print('courses.json δεν διαβάστηκε:', ex); return out
+    for d in data if isinstance(data, list) else []:
+        if not isinstance(d, dict) or not re.match(r'^[A-Za-z0-9_-]{1,40}$', str(d.get('code', ''))) or not d.get('title'): print('courses.json: παράλειψη εγγραφής', str(d)[:80]); continue
+        if d.get('own_only') or all(k in d for k in ('xlsx', 'book', 'book_title')):
+            out.append({'grade': '', 'exam': 'TTDD', 'pdf_offset': 1, **d})
+        else: print('courses.json: λείπουν κλειδιά (xlsx, book, book_title) ή own_only για', d['code'])
+    return [d for d in out if d['code'] not in {x['code'] for x in COURSES}]
+
 def main(root, db):
-    root = pathlib.Path(root); old = []; books = []; old_q = []; done = []
+    root = pathlib.Path(root); old = []; books = []; old_q = []; done = []; old_own = ([], [], [])
     if os.path.exists(db):
         o = sqlite3.connect(db)
+        old_own = ([tuple(x) for x in o.execute("SELECT id,course_code,source,solution_status FROM item WHERE source IN ('PAN','OWN')")] if o.execute("SELECT 1 FROM sqlite_master WHERE name='item'").fetchone() else [],
+                    [tuple(x) for x in o.execute("SELECT item_id,code,points,text,qtype FROM question WHERE item_id IN (SELECT id FROM item WHERE source IN ('PAN','OWN'))")] if o.execute("SELECT 1 FROM sqlite_master WHERE name='item'").fetchone() else [], [])
         old = o.execute("SELECT x.item_id,x.code,s.code,qs.origin FROM question_section qs JOIN question x ON x.id=qs.question_id JOIN section s ON s.id=qs.section_id WHERE qs.origin IN ('manual','ai','rejected')").fetchall(); old_q = o.execute("SELECT item_id,code,qtype,qtype_origin,has_image,image_origin FROM question WHERE qtype_origin='manual' OR image_origin='manual'").fetchall() if 'qtype_origin' in [r[1] for r in o.execute('PRAGMA table_info(question)')] else []; o.close()
     tmp = db + '.new'; pathlib.Path(tmp).unlink(missing_ok=True)
     c = sqlite3.connect(tmp); c.executescript(SCHEMA.read_text(encoding='utf-8'))
-    for co in COURSES:
+    for co in COURSES + extra_courses(root):
         cdir = root / co['code']
+        if co.get('own_only'):
+            c.execute('INSERT OR IGNORE INTO course VALUES(?,?,?,?)', (co['code'], co['title'], co.get('grade', ''), co.get('exam', 'TTDD'))); continue
         if not (cdir / '04_TRAPEZA' / 'orig').is_dir(): print('παράλειψη', co['code']); continue
         xlsx = cdir / co['xlsx']; ingest.run(cdir, xlsx)
         c.execute('INSERT INTO course VALUES(?,?,?,?)', (co['code'], co['title'], co['grade'], co['exam']))
@@ -47,6 +64,13 @@ def main(root, db):
                 if m:
                     s = c.execute('SELECT id FROM section WHERE book_id=? AND code=?', (bid, m.group(1))).fetchone()
                     if s: c.execute("INSERT INTO question_section(question_id,section_id,origin) VALUES(?,?,'iep')", (qid, s[0]))
+    have = {x[0] for x in c.execute('SELECT code FROM course')}; nown = 0
+    for iid, ccode, src, st in old_own[0]:          # δικά μου θέματα και πανελλήνιες: δεν προέρχονται από αρχεία ΙΕΠ, μεταφέρονται όπως είναι
+        if ccode not in have: print('ΠΡΟΣΟΧΗ: το θέμα', iid, 'ανήκει σε μάθημα που λείπει:', ccode); continue
+        c.execute('INSERT OR REPLACE INTO item(id,course_code,source,solution_status) VALUES(?,?,?,?)', (iid, ccode, src, st)); nown += 1
+    for iid, code, pts, text, qt in old_own[1]:
+        if c.execute('SELECT 1 FROM item WHERE id=?', (iid,)).fetchone(): c.execute("INSERT OR REPLACE INTO question(item_id,code,points,text,qtype,qtype_origin) VALUES(?,?,?,?,?,'manual')", (iid, code, pts, text, qt))
+    if nown: print('δικά μου/πανελλήνια θέματα που μεταφέρθηκαν:', nown)
     kept = 0
     for item_id, qcode, scode, origin in old:
         r = c.execute('SELECT x.id,(SELECT id FROM section WHERE code=? LIMIT 1) FROM question x WHERE x.item_id=? AND x.code=?', (scode, item_id, qcode)).fetchone()
@@ -57,7 +81,7 @@ def main(root, db):
     if os.path.exists(db):                                  # διαγωνίσματα: αντιγραφή όπως είναι
         c.commit(); c.execute('ATTACH DATABASE ? AS old', (db,))
         have = {r[0] for r in c.execute("SELECT name FROM old.sqlite_master WHERE type='table'")}
-        for t in ('exam', 'exam_question', 'question_tag', 'collection', 'collection_member', 'quiz', 'quiz_item', 'mdoc', 'question_fav', 'toolbox', 'trash', 'fileops', 'setting', 'wizard_recipe', 'iepcmp'):      # δεδομένα χρήστη: αντιγραφή (κοινές στήλες)
+        for t in ('exam', 'exam_question', 'question_tag', 'collection', 'collection_member', 'quiz', 'quiz_item', 'mdoc', 'question_fav', 'toolbox', 'trash', 'fileops', 'setting', 'wizard_recipe', 'iepcmp', 'ownitem'):      # δεδομένα χρήστη: αντιγραφή (κοινές στήλες)
             if t in have:
                 new = [r[1] for r in c.execute(f'PRAGMA main.table_info({t})')]; oldc = {r[1] for r in c.execute(f'PRAGMA old.table_info({t})')}
                 cols = ','.join(x for x in new if x in oldc); c.execute(f'INSERT INTO main.{t}({cols}) SELECT {cols} FROM old.{t}')

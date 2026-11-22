@@ -16,7 +16,9 @@ START_PAGES = (('/review', 'Θέματα'), ('/search', 'Αναζήτηση'), (
 DEFAULTS = {'diagram_mode': 'svg', 'help_default': 'open', 'help_show': 'on', 'help_mode': 'remember', 'start_page': '/review',
             'drive_url': DRIVE_URL, 'rclone_remote': 'gdrive:TH-ILEK'}
 DEFAULTS['gform_images'] = 'text'
-DEFAULTS['wiz_criteria'] = 'q,qtype,chapter,image,position,fav,yli,section,tag,lsol,upto'
+DEFAULTS['course_active'] = ''
+DEFAULTS['embed_domains'] = 'youtube.com,youtube-nocookie.com,geogebra.org,falstad.com'
+DEFAULTS['wiz_criteria'] = 'q,qtype,chapter,image,position,fav,yli,section,tag,lsol,src,upto'
 DEFAULTS.update({'tip_' + k: 'on' for k, _ in TIP_KINDS})
 CHOICES = {'gform_images': ('text', 'images'), 'diagram_mode': ('svg', 'local'), 'help_default': ('open', 'closed'), 'help_show': ('on', 'off'), 'help_mode': ('remember', 'open', 'closed'),
            'start_page': tuple(u for u, _ in START_PAGES)}
@@ -33,6 +35,8 @@ def valid(k, v):
         return bool(xs) and all(x in CRITERIA_KEYS for x in xs)
     if k == 'drive_url': return bool(re.match(r'^https://(drive|docs)\.google\.com/[^\s<>"\']{3,400}$', v))
     if k == 'rclone_remote': return bool(RE_REMOTE.match(v))
+    if k == 'course_active': return v == '' or bool(re.match(r'^[A-Za-z0-9_-]{1,40}$', v))
+    if k == 'embed_domains': return all(re.match(r'^[a-z0-9]([a-z0-9.-]{1,78})\.[a-z]{2,24}$', d) for d in v.split(',') if d) and len(v) <= 600
     return False
 
 
@@ -89,6 +93,7 @@ def settings_page(saved: int = 0):
 {radios('gform_images', [('text', 'Τύποι ως κείμενο Unicode και εικόνες από φάκελο Drive (προεπιλογή)'), ('images', 'Όλα τα ερωτήματα ως εικόνες (η εικόνα του ΙΕΠ κάθε ερωτήματος)')])}
 <p><small>Ισχύει όταν στο βήμα 5 του wizard η επιλογή είναι «Όπως στις Ρυθμίσεις».</small></p></fieldset>
 <fieldset><legend>Google Drive και συγχρονισμός</legend>
+<label class=f>Επιτρεπόμενα domains για embed σε παρουσιάσεις/σελίδες (χωρισμένα με κόμμα· ισχύει από 0.33) <input class=r-txt name=embed_domains size=70 value="{E(s['embed_domains'])}"></label>
 <label class=f>Σύνδεσμος φακέλου Drive (για σύγκριση) <input class=r-txt name=drive_url size=70 value="{E(s['drive_url'])}"></label>
 <label class=f>Απομακρυσμένος φάκελος rclone <input class=r-txt name=rclone_remote size=30 value="{E(s['rclone_remote'])}"></label>
 <p><small>Η μορφή του rclone είναι <code>όνομα:διαδρομή</code>, π.χ. <code>gdrive:TH-ILEK</code>. Χρησιμοποιείται από τη σελίδα <a href='/sync'>Συγχρονισμός</a>.</small></p></fieldset>
