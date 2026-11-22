@@ -29,7 +29,11 @@ def _v5(c):
     """0.26.0: τίτλος/έτος/σημείωση για δικά μου θέματα και πανελλήνιες (δεδομένα χρήστη)."""
     c.execute("CREATE TABLE IF NOT EXISTS ownitem(item_id TEXT PRIMARY KEY, title TEXT, year TEXT, note TEXT)")
 
-MIGRATIONS = [(1, _v1), (2, _v2), (3, _v3), (4, _v4), (5, _v5)]
+def _v6(c):
+    """0.27.0: κείμενο/εξισώσεις/εικόνες των Word του ΙΕΠ (παράγωγος πίνακας, ξαναχτίζεται από τα αρχεία)."""
+    c.execute("CREATE TABLE IF NOT EXISTS wordsrc(item_id TEXT NOT NULL, kind TEXT NOT NULL, relpath TEXT, sha TEXT, mtime REAL, n_par INTEGER, n_eq INTEGER, n_img INTEGER, n_q INTEGER, pts INTEGER, status TEXT, warn TEXT, text TEXT, images TEXT, PRIMARY KEY(item_id,kind))")
+
+MIGRATIONS = [(1, _v1), (2, _v2), (3, _v3), (4, _v4), (5, _v5), (6, _v6)]
 LATEST = MIGRATIONS[-1][0]
 
 def tables(c): return {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}

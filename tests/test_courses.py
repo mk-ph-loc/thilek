@@ -86,7 +86,7 @@ def test_settings_embed_domains_and_course_active_validation(cl):
 
 def test_migration_5_and_schema_agree(cl):
     from app import migrations as m
-    assert m.LATEST == 5 and db().execute('SELECT version FROM schema_version').fetchone()[0] == 5 and db().execute("SELECT 1 FROM sqlite_master WHERE name='ownitem'").fetchone()
+    assert m.LATEST >= 5 and db().execute('SELECT version FROM schema_version').fetchone()[0] == m.LATEST and db().execute("SELECT 1 FROM sqlite_master WHERE name='ownitem'").fetchone()
     c = sqlite3.connect(':memory:'); c.execute('CREATE TABLE schema_version(version INTEGER)'); c.execute('INSERT INTO schema_version VALUES(4)'); m._v5(c); m._v5(c)
     assert c.execute("SELECT 1 FROM sqlite_master WHERE name='ownitem'").fetchone()
 

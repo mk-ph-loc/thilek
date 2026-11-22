@@ -91,6 +91,10 @@ def main(root, db):
         try: (cdir / '04_TRAPEZA' / 'solution_warnings.txt').write_text('\n'.join(res['warnings']), encoding='utf-8')
         except OSError as ex: print('δεν γράφτηκε το solution_warnings.txt:', ex)
         for w in res['warnings'][:20]: print('  ', w)
+    from app import wordsrc
+    for code, cdir in done:
+        try: print(code + ':', wordsrc.summary(wordsrc.scan(c, root, code)))
+        except Exception as ex: print('Word: η σάρωση απέτυχε:', ex)
     c.commit()
     auto = 0
     for bid, pdf, off in books:

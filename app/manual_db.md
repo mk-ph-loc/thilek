@@ -10,7 +10,7 @@
 | Κατηγορία | Τι είναι | Στο rebuild |
 |---|---|---|
 | {{ok:Τράπεζα}} | `course`, `book`, `section`, `item`, `question`, `question_section(origin=iep/auto)`, `yli_year` | **ξαναχτίζονται** από τα αρχεία |
-| {{info:Ευρετήρια}} | `qsolution`, `book_page`, `book_fts`, `q_fts` | **ξαναχτίζονται** (αντίγραφα αρχείων) |
+| {{info:Ευρετήρια}} | `qsolution`, `wordsrc`, `book_page`, `book_fts`, `q_fts` | **ξαναχτίζονται** (αντίγραφα αρχείων) |
 | {{warn:Δεδομένα χρήστη}} | `exam`, `exam_question`, `question_tag`, `question_fav`, `collection`, `collection_member`, `quiz`, `quiz_item`, `mdoc`, `toolbox`, `trash`, `fileops`, `setting`, `wizard_recipe`, `iepcmp`, `ownitem` | **αντιγράφονται** όπως είναι |
 
 Επιπλέον, μέσα στην Τράπεζα **διατηρούνται** οι δικές σου διορθώσεις: οι συνδέσεις `question_section` με `origin` manual/ai/rejected και ο τύπος/εικόνα ερωτήματος με `*_origin = manual`.
@@ -115,6 +115,8 @@ erDiagram
     **`wizard_recipe`** — `id`, `name`, `state` (JSON με όλη την κατάσταση των βημάτων του wizard), `created`, `updated`. Γράφεται από το `/wizard`· **επιβιώνει του rebuild**.
 
 === "Ευρετήρια"
+    **`wordsrc`** — ό,τι διαβάστηκε από τα Word του ΙΕΠ (`<ID>.docx`, `<ID>_SOLUTION.docx`): `item_id`, `kind` (`statement`/`solution`), `relpath`, `sha`, `mtime`, `n_par`, `n_eq`, `n_img`, `n_q`, `pts`, `status` (`ok`/`warn`/`error`), `warn` (JSON), `text` (με εξισώσεις σε LaTeX), `images` (JSON). Γράφεται από το «Σάρωση αρχείων Word» και το rebuild· ξαναχτίζεται από τα αρχεία.
+
     **`qsolution`** — αντίγραφο των αρχείων λύσεων `.md`: `item_id`, `qcode`, `question_id`, `iep_id`, `sub`, `relpath`, `fm` (front matter, JSON), `sections`, `quiz`, `status`, `warn`, `mtime`, `sha`. Γράφεται από «Σάρωση φακέλου» (`/lyseis/scan`) και το rebuild.
 
     **`book_page`** — κείμενο κάθε σελίδας βιβλίου (`book_id`, `pdf_page`, `printed`, `text`, `norm`). **`book_fts`**, **`q_fts`** — πίνακες FTS5 αναζήτησης. Γράφονται από «Ανανέωση ευρετηρίου» (`/search/reindex`) και το rebuild.

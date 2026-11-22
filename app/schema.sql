@@ -29,12 +29,13 @@ CREATE TABLE question_fav(item_id TEXT NOT NULL, qcode TEXT NOT NULL, added TEXT
 CREATE TABLE qsolution(item_id TEXT NOT NULL, qcode TEXT NOT NULL, question_id INTEGER, iep_id TEXT, sub TEXT, relpath TEXT NOT NULL,   -- λύσεις εκπαιδευτικού από <ID>.<θέμα>-<υπ>.md
   fm TEXT, sections TEXT, quiz TEXT, status TEXT, warn TEXT, mtime REAL, sha TEXT, PRIMARY KEY(item_id,qcode)); -- JSON πεδία· ξαναχτίζεται από τα αρχεία (όχι δεδομένα χρήστη)
 CREATE TABLE schema_version(version INTEGER NOT NULL); -- app/migrations.py: LATEST
-INSERT INTO schema_version(version) VALUES(5);
+INSERT INTO schema_version(version) VALUES(6);
 -- 0.18.0: εργαλειοθήκες, κάδος αρχείων, ιστορικό ενεργειών αρχείων, ρυθμίσεις (δεδομένα χρήστη, διατηρούνται στο rebuild)
 CREATE TABLE IF NOT EXISTS toolbox(slot INTEGER PRIMARY KEY CHECK(slot BETWEEN 1 AND 3), name TEXT NOT NULL, items TEXT NOT NULL DEFAULT '[]', enabled INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS trash(id INTEGER PRIMARY KEY, orig_rel TEXT NOT NULL, trash_rel TEXT NOT NULL, kind TEXT, size INTEGER, deleted TEXT, reason TEXT);
 CREATE TABLE IF NOT EXISTS fileops(id INTEGER PRIMARY KEY, ts TEXT, op TEXT, path TEXT, detail TEXT);
 CREATE TABLE IF NOT EXISTS setting(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS wordsrc(item_id TEXT NOT NULL, kind TEXT NOT NULL, relpath TEXT, sha TEXT, mtime REAL, n_par INTEGER, n_eq INTEGER, n_img INTEGER, n_q INTEGER, pts INTEGER, status TEXT, warn TEXT, text TEXT, images TEXT, PRIMARY KEY(item_id,kind)); -- παράγωγος: ξαναχτίζεται από τα .docx (rebuild ή Σάρωση Word)
 CREATE TABLE IF NOT EXISTS ownitem(item_id TEXT PRIMARY KEY, title TEXT, year TEXT, note TEXT); -- δικά μου/πανελλήνια θέματα (τα θέματα και ερωτήματά τους μεταφέρονται στο rebuild)
 CREATE TABLE IF NOT EXISTS iepcmp(item_id TEXT NOT NULL, qcode TEXT NOT NULL, qn INTEGER NOT NULL, kind TEXT, mine TEXT, iep TEXT, auto TEXT, status TEXT, manual INTEGER NOT NULL DEFAULT 0, note TEXT, updated TEXT, PRIMARY KEY(item_id,qcode,qn)); -- επιβιώνει του rebuild
 CREATE TABLE IF NOT EXISTS wizard_recipe(id INTEGER PRIMARY KEY, name TEXT NOT NULL, state TEXT NOT NULL DEFAULT '{}', created TEXT, updated TEXT); -- επιβιώνει του rebuild

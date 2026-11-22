@@ -18,7 +18,7 @@ DEFAULTS = {'diagram_mode': 'svg', 'help_default': 'open', 'help_show': 'on', 'h
 DEFAULTS['gform_images'] = 'text'
 DEFAULTS['course_active'] = ''
 DEFAULTS['embed_domains'] = 'youtube.com,youtube-nocookie.com,geogebra.org,falstad.com'
-DEFAULTS['wiz_criteria'] = 'q,qtype,chapter,image,position,fav,yli,section,tag,lsol,src,upto'
+DEFAULTS['wiz_criteria'] = 'q,qtype,chapter,image,position,fav,yli,section,tag,lsol,src,word,upto'
 DEFAULTS.update({'tip_' + k: 'on' for k, _ in TIP_KINDS})
 CHOICES = {'gform_images': ('text', 'images'), 'diagram_mode': ('svg', 'local'), 'help_default': ('open', 'closed'), 'help_show': ('on', 'off'), 'help_mode': ('remember', 'open', 'closed'),
            'start_page': tuple(u for u, _ in START_PAGES)}
