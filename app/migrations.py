@@ -33,7 +33,17 @@ def _v6(c):
     """0.27.0: κείμενο/εξισώσεις/εικόνες των Word του ΙΕΠ (παράγωγος πίνακας, ξαναχτίζεται από τα αρχεία)."""
     c.execute("CREATE TABLE IF NOT EXISTS wordsrc(item_id TEXT NOT NULL, kind TEXT NOT NULL, relpath TEXT, sha TEXT, mtime REAL, n_par INTEGER, n_eq INTEGER, n_img INTEGER, n_q INTEGER, pts INTEGER, status TEXT, warn TEXT, text TEXT, images TEXT, PRIMARY KEY(item_id,kind))")
 
-MIGRATIONS = [(1, _v1), (2, _v2), (3, _v3), (4, _v4), (5, _v5), (6, _v6)]
+DECK = """CREATE TABLE IF NOT EXISTS deck(id INTEGER PRIMARY KEY, name TEXT NOT NULL, title TEXT, subtitle TEXT, recipe TEXT NOT NULL DEFAULT 'free', state TEXT NOT NULL DEFAULT '{}',
+  style TEXT NOT NULL DEFAULT 'calm', opts TEXT NOT NULL DEFAULT '{}', kind INTEGER NOT NULL DEFAULT 0, course_code TEXT, note TEXT, created TEXT, updated TEXT);
+CREATE TABLE IF NOT EXISTS deck_slide(id INTEGER PRIMARY KEY, deck_id INTEGER NOT NULL, pos INTEGER NOT NULL, layout TEXT NOT NULL DEFAULT 'content', title TEXT, body TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
+  opts TEXT NOT NULL DEFAULT '{}', down INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0, src_item TEXT, src_qcode TEXT, src_unit TEXT, src_part INTEGER, src_sha TEXT, gen_sha TEXT, linked INTEGER NOT NULL DEFAULT 0, updated TEXT);
+CREATE INDEX IF NOT EXISTS ix_dslide ON deck_slide(deck_id,pos);"""
+
+def _v7(c):
+    """0.32.0: παρουσιάσεις (deck) και διαφάνειες (deck_slide)· δεδομένα χρήστη, διατηρούνται στο rebuild. Χωρίς ξένα κλειδιά, όπως οι άλλοι πίνακες χρήστη."""
+    c.executescript(DECK)
+
+MIGRATIONS = [(1, _v1), (2, _v2), (3, _v3), (4, _v4), (5, _v5), (6, _v6), (7, _v7)]
 LATEST = MIGRATIONS[-1][0]
 
 def tables(c): return {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}

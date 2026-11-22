@@ -4,10 +4,10 @@ import datetime, io, json, re, zipfile
 
 FORMATS = (('excel', 'Excel (πίνακας ερωτημάτων με συνδέσμους σε αρχεία)'), ('md', 'Markdown έγγραφο (/docs, από εκεί και Word)'),
            ('htmldoc', 'Έγγραφο HTML για εκτύπωση (εικόνες ερωτημάτων)'), ('reveal', 'Reveal.js (λύσεις εκπαιδευτικού)'), ('student', 'HTML μαθητή (λύσεις εκπαιδευτικού)'),
-           ('pptx', 'PowerPoint .pptx (λύσεις εκπαιδευτικού, μέσω Pandoc)'), ('moodle', 'Moodle XML (quiz από λύσεις εκπαιδευτικού)'), ('merge', 'PDF συγχώνευσης θεμάτων'), ('exam', 'Διαγώνισμα/τεστ Word (πρότυπο σχολείου)'),
+           ('pptx', 'PowerPoint .pptx (λύσεις εκπαιδευτικού, μέσω Pandoc)'), ('deck', 'Παρουσίαση που επεξεργάζεσαι (/decks: διαφάνειες Markdown, Reveal, PDF, PowerPoint)'), ('moodle', 'Moodle XML (quiz από λύσεις εκπαιδευτικού)'), ('merge', 'PDF συγχώνευσης θεμάτων'), ('exam', 'Διαγώνισμα/τεστ Word (πρότυπο σχολείου)'),
            ('gform', 'Google Form (script Apps Script από λύσεις εκπαιδευτικού)'), ('h5p', 'H5P Question Set (δεδομένα JSON + οδηγίες)'))
 FORMAT_KEYS = tuple(k for k, _ in FORMATS)
-NEEDS_SOL = ('reveal', 'student', 'pptx', 'moodle', 'gform', 'h5p')                  # θέλουν αρχείο λύσης εκπαιδευτικού
+NEEDS_SOL = ('reveal', 'student', 'pptx', 'deck', 'moodle', 'gform', 'h5p')                  # θέλουν αρχείο λύσης εκπαιδευτικού
 POINTS_HONORED = ('excel', 'md', 'exam')                             # οι υπόλοιπες παίρνουν μονάδες από τα αρχεία/βάση
 UNSEL = (('omit', 'Να μην εμφανιστούν καθόλου'), ('hide', 'Κρυφά (μπαίνουν στο αρχείο αλλά δεν φαίνονται)'),
          ('append', 'Στο τέλος, μη εμφανιζόμενα'), ('manual', 'Θα διαλέξω εγώ ποια θα εμφανιστούν'))

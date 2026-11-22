@@ -92,7 +92,7 @@ def criteria_on():
     return [k for k in M.CRITERIA_KEYS if k in on]
 
 
-def filter_form(c, rid, f, on):
+def filter_form(c, rid, f, on, action=None):
     sel = lambda opts, cur: ''.join(f"<option value='{v}'{' selected' if cur == v else ''}>{t}</option>" for v, t in opts)
     qt = f['qtype'][0] if f.get('qtype') else ''; ctl = []
     def add(k, label, html_):
@@ -110,7 +110,7 @@ def filter_form(c, rid, f, on):
     add('word', 'Word ΙΕΠ', f"<select class=r-list name=word>{word_opts(f.get('word', ''))}</select>")
     add('src', 'Πηγή', f"<select class=r-list name=src>{src_opts(f.get('src', ''))}</select>")
     add('upto', 'Ύλη από–μέχρι σελίδα', f"<input class=r-txt name=frm value='{E(f.get('frm', ''))}' size=4> – <input class=r-txt name=upto value='{E(f.get('upto', ''))}' size=4>")
-    return f"<form method=get action='/wizard/{rid}/1' class=filters>{''.join(ctl)}<button>Εμφάνιση</button></form><p><small>Ποια κριτήρια φαίνονται ρυθμίζεται στις <a href='/settings'>Ρυθμίσεις</a>.</small></p>"
+    return f"<form method=get action='{action or f'/wizard/{rid}/1'}' class=filters>{''.join(ctl)}<button>Εμφάνιση</button></form><p><small>Ποια κριτήρια φαίνονται ρυθμίζεται στις <a href='/settings'>Ρυθμίσεις</a>.</small></p>"
 
 
 def step_filters(request, on):
@@ -232,6 +232,13 @@ def produce(c, st, es, preview=False):
         files, model = wizsite.build_site(c, st, es)
         if not files: raise HTTPException(422, 'Κανένα από τα ερωτήματα δεν έχει αρχείο λύσης (.md). Δες τη σελίδα «Λύσεις».')
         return ('site', files, model)
+    if fm == 'deck':
+        from . import deck as D, solstyle
+        course = next((e['row']['course_code'] for e in es if e['row']['course_code']), '')
+        did = D.create(c, title, 'solutions', title, '', st['style'], {'frag': bool(st['frag'])}, {'members': [list(m) for m in members_of(es)], 'sx': solstyle.include_of(st['sx'])}, 0, course)
+        rep = D.build(c, did)
+        if not rep['created']: raise HTTPException(422, 'Κανένα από τα ερωτήματα δεν έχει αρχείο λύσης (.md). Δες τη σελίδα «Λύσεις».')
+        c.commit(); return ('redirect', f'/decks/{did}')
     if fm == 'moodle':
         from . import wizquiz
         r = wizquiz.moodle(c, st, es)

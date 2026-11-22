@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from .main_auth import auth
-from . import review, tools_merge, tools_html, exams, library, collections, quizzes, mddoc, search, qbrowse, pickq, manual, lyseis, filebrowser, uikit, settings, docsui, syncui, wizard, publish, iepcmp, courses, wordsrc, filelist, progress, fileops
+from . import review, tools_merge, tools_html, exams, library, collections, quizzes, mddoc, search, qbrowse, pickq, manual, lyseis, filebrowser, uikit, settings, docsui, syncui, wizard, publish, iepcmp, courses, wordsrc, filelist, progress, fileops, deckui
 from . import __version__, config, migrations
 
 @asynccontextmanager
@@ -45,6 +45,7 @@ app.include_router(wordsrc.router)
 app.include_router(filelist.router)
 app.include_router(progress.router)
 app.include_router(fileops.router)
+app.include_router(deckui.router)
 app.add_middleware(docsui.PathMiddleware)
 def cfg(): return config.load()
 

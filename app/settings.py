@@ -67,6 +67,8 @@ def settings_page(saved: int = 0):
     on = s['wiz_criteria'].split(',')
     wcs = ''.join(f"<label class='f chk'><input type=checkbox class=r-opt name=wc_{k} {'checked' if k in on else ''}>{E(lab)}</label>" for k, lab in CRITERIA)
     start = ''.join(f"<option value='{E(u)}' {'selected' if s['start_page'] == u else ''}>{E(lab)} ({E(u)})</option>" for u, lab in START_PAGES)
+    import shutil
+    pd = 'ναι' if shutil.which('pandoc') else 'όχι'; lo = 'ναι' if (shutil.which('soffice') or shutil.which('libreoffice')) else 'όχι'
     body = f"""<h2>Ρυθμίσεις</h2>{ok}
 <form method=post action=/settings>
 <input type=hidden name=tips_present value=1>
@@ -92,6 +94,10 @@ def settings_page(saved: int = 0):
 <fieldset><legend>Google Form (wizard)</legend>
 {radios('gform_images', [('text', 'Τύποι ως κείμενο Unicode και εικόνες από φάκελο Drive (προεπιλογή)'), ('images', 'Όλα τα ερωτήματα ως εικόνες (η εικόνα του ΙΕΠ κάθε ερωτήματος)')])}
 <p><small>Ισχύει όταν στο βήμα 5 του wizard η επιλογή είναι «Όπως στις Ρυθμίσεις».</small></p></fieldset>
+<fieldset><legend>Παρουσιάσεις: PDF (πληροφορία)</legend>
+<p>Το PDF μιας <a href='/decks'>παρουσίασης</a> βγαίνει από τον <b>browser</b> (Εκτύπωση → Αποθήκευση ως PDF, διάταξη εκτύπωσης του Reveal)· ο server δεν φτιάχνει PDF.</p>
+<p>Για πιο προχωρημένο PDF υπάρχουν δύο εναλλακτικές, που <b>δεν έχουν ενεργοποιηθεί</b>: <b>LibreOffice headless</b> πάνω στο .pptx (~400 MB στο LXC, εμφάνιση του Pandoc) και <b>Pandoc + XeLaTeX/Beamer</b> (~1 GB, θέλει ελληνικές γραμματοσειρές, διαφορετική εμφάνιση).</p>
+<p><small>Τώρα στον server: Pandoc {pd}· LibreOffice {lo}. Λεπτομέρειες στο <a href='/manual#s34'>εγχειρίδιο §34</a>.</small></p></fieldset>
 <fieldset><legend>Google Drive και συγχρονισμός</legend>
 <label class=f>Επιτρεπόμενα domains για embed σε παρουσιάσεις/σελίδες (χωρισμένα με κόμμα· ισχύει από 0.33) <input class=r-txt name=embed_domains size=70 value="{E(s['embed_domains'])}"></label>
 <label class=f>Σύνδεσμος φακέλου Drive (για σύγκριση) <input class=r-txt name=drive_url size=70 value="{E(s['drive_url'])}"></label>

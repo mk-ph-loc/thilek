@@ -81,7 +81,7 @@ def main(root, db):
     if os.path.exists(db):                                  # διαγωνίσματα: αντιγραφή όπως είναι
         c.commit(); c.execute('ATTACH DATABASE ? AS old', (db,))
         have = {r[0] for r in c.execute("SELECT name FROM old.sqlite_master WHERE type='table'")}
-        for t in ('exam', 'exam_question', 'question_tag', 'collection', 'collection_member', 'quiz', 'quiz_item', 'mdoc', 'question_fav', 'toolbox', 'trash', 'fileops', 'setting', 'wizard_recipe', 'iepcmp', 'ownitem'):      # δεδομένα χρήστη: αντιγραφή (κοινές στήλες)
+        for t in ('exam', 'exam_question', 'question_tag', 'collection', 'collection_member', 'quiz', 'quiz_item', 'mdoc', 'question_fav', 'toolbox', 'trash', 'fileops', 'setting', 'wizard_recipe', 'iepcmp', 'ownitem', 'deck', 'deck_slide'):      # δεδομένα χρήστη: αντιγραφή (κοινές στήλες)
             if t in have:
                 new = [r[1] for r in c.execute(f'PRAGMA main.table_info({t})')]; oldc = {r[1] for r in c.execute(f'PRAGMA old.table_info({t})')}
                 cols = ','.join(x for x in new if x in oldc); c.execute(f'INSERT INTO main.{t}({cols}) SELECT {cols} FROM old.{t}')
