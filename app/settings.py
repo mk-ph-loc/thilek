@@ -99,7 +99,7 @@ def settings_page(saved: int = 0):
 <p>Για πιο προχωρημένο PDF υπάρχουν δύο εναλλακτικές, που <b>δεν έχουν ενεργοποιηθεί</b>: <b>LibreOffice headless</b> πάνω στο .pptx (~400 MB στο LXC, εμφάνιση του Pandoc) και <b>Pandoc + XeLaTeX/Beamer</b> (~1 GB, θέλει ελληνικές γραμματοσειρές, διαφορετική εμφάνιση).</p>
 <p><small>Τώρα στον server: Pandoc {pd}· LibreOffice {lo}. Λεπτομέρειες στο <a href='/manual#s34'>εγχειρίδιο §34</a>.</small></p></fieldset>
 <fieldset><legend>Google Drive και συγχρονισμός</legend>
-<label class=f>Επιτρεπόμενα domains για embed σε παρουσιάσεις/σελίδες (χωρισμένα με κόμμα· ισχύει από 0.33) <input class=r-txt name=embed_domains size=70 value="{E(s['embed_domains'])}"></label>
+<label class=f>Επιτρεπόμενα domains για embed σε παρουσιάσεις/σελίδες (χωρισμένα με κόμμα· ισχύει στις παρουσιάσεις: iframe μόνο για αυτά, αλλιώς σύνδεσμος) <input class=r-txt name=embed_domains size=70 value="{E(s['embed_domains'])}"></label>
 <label class=f>Σύνδεσμος φακέλου Drive (για σύγκριση) <input class=r-txt name=drive_url size=70 value="{E(s['drive_url'])}"></label>
 <label class=f>Απομακρυσμένος φάκελος rclone <input class=r-txt name=rclone_remote size=30 value="{E(s['rclone_remote'])}"></label>
 <p><small>Η μορφή του rclone είναι <code>όνομα:διαδρομή</code>, π.χ. <code>gdrive:TH-ILEK</code>. Χρησιμοποιείται από τη σελίδα <a href='/sync'>Συγχρονισμός</a>.</small></p></fieldset>

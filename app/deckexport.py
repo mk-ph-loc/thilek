@@ -3,14 +3,14 @@
 εναλλακτικές για πιο προχωρημένο PDF: LibreOffice headless πάνω στο .pptx ή Pandoc + XeLaTeX/Beamer, βλ. εγχειρίδιο)."""
 import html, re
 from fastapi import HTTPException
-from . import config, decktpl as T, deckmd, solexport as X
+from . import config, decktpl as T, deckmd, embed as EM, settings, solexport as X
 from .mdmath import img_data, normalize_math_md, outside_fences, render_md
 from .solstyle import STYLES, style_of
 
 E = html.escape
 DECK_CSS = (".reveal .cols{display:flex;gap:1.2em;align-items:flex-start}.reveal .col{flex:1;min-width:0}.reveal .ctr{display:flex;flex-direction:column;justify-content:center;height:100%;text-align:center}"
             ".reveal .ctr h1{margin:.2em 0}.reveal .l-section h1{color:var(--accent);font-size:2.2em}.reveal .small{font-size:.8em}.reveal .center{text-align:center}.reveal .dim{opacity:.7}"
-            ".reveal .warn{color:var(--bad)}.reveal .embed{padding:.4em .8em;border:1px solid currentColor;border-radius:var(--rad);display:inline-block}.reveal .qz .stem{margin:.3em 0}"
+            ".reveal .warn{color:var(--bad)}.reveal .emb{position:relative;width:100%;max-width:100%;margin:.4em 0;background:#0001;border-radius:var(--rad);overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center}.reveal .emb iframe{position:absolute;inset:0;width:100%;height:100%;border:0}.reveal .embgo{font-size:.7em;padding:.4em .9em;cursor:pointer}.reveal .embed{padding:.4em .8em;border:1px solid currentColor;border-radius:var(--rad);display:inline-block}.reveal .qz .stem{margin:.3em 0}"
             ".reveal .hd{margin-bottom:.4em}.reveal .l-bullets li,.reveal .l-summary li{margin:.25em 0}")
 
 
@@ -24,7 +24,7 @@ def effective(deck, sl):
     return out + vis
 
 
-def section_html(s, deck, root, links=None):
+def section_html(s, deck, root, links=None, domains=(), mode='reveal'):
     o = T.load_opts(s.get('opts'), deck=False); lay = T.layout_ok(s.get('layout'))
     cls = ['u', f"l-{lay}"] + ([f"u-{T.LAYOUT_UNIT[lay]}"] if lay in T.LAYOUT_UNIT else []) + ([o['cls']] if o['cls'] else [])
     at = []
@@ -33,7 +33,7 @@ def section_html(s, deck, root, links=None):
         u = img_data(root, o['bg']['image'][len('/files/'):])
         if u: at.append(f"data-background-image='{E(u)}'")
     if o['transition']: at.append(f"data-transition='{E(o['transition'])}'")
-    body = deckmd.slide_html(s, root, links, deck['opts']['frag'])
+    body = deckmd.slide_html(s, root, links, deck['opts']['frag'], domains, mode)
     t = E(s.get('title') or '')
     if lay == 'title': inner = f"<div class=ctr><h1>{t}</h1>{body}</div>"
     elif lay == 'section': inner = f"<div class=ctr><h1>{t}</h1></div>"
@@ -52,17 +52,19 @@ def stacks(sl):
     return out
 
 
-def reveal(deck, sl, root, links=None, print_=False):
+def reveal(deck, sl, root, links=None, print_=False, publish=False, domains=None):
     """Αυτόνομο HTML Reveal.js. print_: διάταξη εκτύπωσης (?print-pdf) για PDF από τον browser (με σημειώσεις σε ξεχωριστή σελίδα αν opts.pdf_notes)."""
     o = deck['opts']; es = effective(deck, sl)
+    domains = EM.hosts(settings.get('embed_domains')) if domains is None else domains; mode = 'print' if print_ else ('click' if publish else 'reveal')
     if not es: raise HTTPException(422, 'Η παρουσίαση δεν έχει εμφανίσιμες διαφάνειες.')
     parts = []
     for g in stacks(es):
-        hs = [section_html(s, deck, root, links) for s in g]
+        hs = [section_html(s, deck, root, links, domains, mode) for s in g]
         parts.append(hs[0] if len(hs) == 1 else '<section>' + ''.join(hs) + '</section>')
     w, h = T.RATIOS[o['ratio']]; style = style_of(deck['style'])
     cfg = {'width': w, 'height': h, 'transition': o['transition'], 'slide_number': 'c/t' if o['numbers'] else False, 'css': DECK_CSS, 'print_': print_,
-           'show_notes': ('separate-page' if o['pdf_notes'] else False) if print_ else False, 'notes': (not print_) and any((s.get('notes') or '').strip() for s in es)}
+           'show_notes': ('separate-page' if o['pdf_notes'] else False) if print_ else False, 'notes': (not print_) and any((s.get('notes') or '').strip() for s in es),
+           'meta_csp': None if publish else f"frame-src {EM.csp_frames(domains)}; object-src 'none'; base-uri 'none'", 'js': EM.CLICK_JS if (publish and domains) else ''}
     return X.reveal_page(''.join(parts), deck.get('title') or deck['name'], style, cfg)
 
 

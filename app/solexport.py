@@ -119,10 +119,12 @@ def reveal_page(sections_html, title, style, cfg=None):
     sc = lambda s: '<script>' + _no_close(s, 'script') + '</script>'
     extra_css = cfg.get('css', '')
     notes_js = sc((VENDOR / 'reveal' / 'notes.js').read_text(encoding='utf-8')) if cfg.get('notes') else ''
+    extra_js = sc(cfg['js']) if cfg.get('js') else ''
+    meta_csp = f"<meta http-equiv='Content-Security-Policy' content=\"{E(cfg['meta_csp'])}\">" if cfg.get('meta_csp') else ''
     pr = '<script>try{if(!/print-pdf/.test(location.search)){history.replaceState(null,"",location.pathname+"?print-pdf"+location.hash);location.reload();}}catch(e){}</script>' if cfg.get('print_') else ''
-    return (f"<!doctype html><html lang='el'><head><meta charset='utf-8'><meta name=viewport content='width=device-width,initial-scale=1'><title>{E(title)}</title>"
+    return (f"<!doctype html><html lang='el'><head><meta charset='utf-8'>{meta_csp}<meta name=viewport content='width=device-width,initial-scale=1'><title>{E(title)}</title>"
             f"{st(a['reveal_css'])}{st(a[theme])}{st(a['katex_css'])}{st(reveal_css(style) + extra_css)}</head><body><div class=reveal><div class=slides>{sections_html}</div></div>"
-            f"{sc(a['katex_js'])}{sc(a['auto_js'])}{sc(a['reveal_js'])}{notes_js}{pr}{sc(init)}</body></html>")
+            f"{sc(a['katex_js'])}{sc(a['auto_js'])}{sc(a['reveal_js'])}{notes_js}{extra_js}{pr}{sc(init)}</body></html>")
 
 # ---------- PowerPoint (Pandoc) ----------
 SAFE_IMG = re.compile(r'^images/[A-Za-z0-9_.-]+\.(?:png|jpe?g|gif)$', re.I)

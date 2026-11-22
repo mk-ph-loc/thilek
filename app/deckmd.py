@@ -5,7 +5,7 @@
 Επίσης: εισαγωγή/εξαγωγή ολόκληρης παρουσίασης ως ένα αρχείο deck.md. Χωρίς FastAPI και χωρίς βάση."""
 import html, json, re
 import yaml
-from . import decktpl as T, qsol, solexport as X
+from . import decktpl as T, embed as EM, qsol, solexport as X
 from .mdmath import FENCE, normalize_math_md, outside_fences, render_md
 
 E = html.escape
@@ -53,7 +53,10 @@ def parse(body):
             blocks.append({'t': 'cols', 'cols': cols})
         elif name == 'quiz': blocks.append({'t': 'quiz', 'yaml': text})
         elif name == 'step': blocks.append({'t': 'step', 'text': text})
-        else: blocks.append({'t': 'embed', 'url': (arg or '').strip(), 'caption': text})
+        else:
+            url, params, unk = EM.split_arg(arg)
+            if unk: warns.append('embed: αγνοήθηκαν «' + ' '.join(unk) + '» (επιτρέπονται ratio=16:9|4:3|1:1, h=200..700, start=δευτερόλεπτα)')
+            blocks.append({'t': 'embed', 'url': url, 'params': params, 'caption': text})
 
     for line in (body or '').split('\n'):
         if cur is None:
@@ -84,7 +87,7 @@ def compose(bl):
         elif t == 'cols': out.append('::: cols\n' + '\n|||\n'.join(c.strip('\n') for c in b.get('cols') or ['']) + '\n:::')
         elif t == 'quiz': out.append('::: quiz\n' + (b.get('yaml') or '').strip('\n') + '\n:::')
         elif t == 'step': out.append('::: step\n' + (b.get('text') or '').strip('\n') + '\n:::')
-        elif t == 'embed': out.append(f"::: embed {b.get('url', '')}".rstrip() + ('\n' + b['caption'].strip('\n') if (b.get('caption') or '').strip() else '') + '\n:::')
+        elif t == 'embed': out.append(f"::: embed {EM.arg_text(b.get('url', ''), b.get('params'))}".rstrip() + ('\n' + b['caption'].strip('\n') if (b.get('caption') or '').strip() else '') + '\n:::')
     return '\n\n'.join(out)
 
 
@@ -97,14 +100,18 @@ def quiz_item(text, n=1):
     return (None, '; '.join(it['err'])) if it['err'] else (it, '')
 
 
-def warnings(slide):
-    """Προειδοποιήσεις για μια διαφάνεια (λίστα κειμένων)."""
+def warnings(slide, domains=None):
+    """Προειδοποιήσεις για μια διαφάνεια (λίστα κειμένων). domains: λίστα επιτρεπτών hosts για embed (None = χωρίς έλεγχο host)."""
     bl, w = parse(slide.get('body') or '')
     for b in bl:
         if b['t'] == 'quiz':
             it, err = quiz_item(b['yaml'])
             if err: w.append('quiz: ' + err)
-        elif b['t'] == 'embed' and not RE_URL.match(b['url']): w.append(f"embed: μη επιτρεπτός σύνδεσμος «{b['url'][:60]}» (μόνο https)")
+        elif b['t'] == 'embed':
+            if not RE_URL.match(b['url']): w.append(f"embed: μη επιτρεπτός σύνδεσμος «{b['url'][:60]}» (μόνο https)")
+            elif domains is not None:
+                ok, _, why = EM.check(EM.to_src(b['url'], b.get('params'), domains), domains)
+                if not ok: w.append('embed: ' + why + ' — θα εμφανιστεί ως σύνδεσμος')
     if len(slide.get('body') or '') > T.LIMITS['body']: w.append('το σώμα ξεπερνά το όριο μεγέθους')
     return w
 
@@ -115,7 +122,7 @@ def _md(text, base, root, links, frag):
     return X.fragmentize(h) if frag else h
 
 
-def slide_html(slide, root, links=None, frag=False):
+def slide_html(slide, root, links=None, frag=False, domains=(), mode='reveal'):
     """Εσωτερικό HTML του σώματος μιας διαφάνειας. frag: προεπιλογή bullets ένα-ένα του deck (η διαφάνεια έχει προτεραιότητα αν opts.frag δεν είναι None)."""
     o = T.load_opts(slide.get('opts'), deck=False); base = o['base']
     if o['frag'] is not None: frag = o['frag']
@@ -129,11 +136,7 @@ def slide_html(slide, root, links=None, frag=False):
             it, err = quiz_item(b['yaml'])
             if err: out.append(f"<p class=warn>⚠ quiz: {E(err)}</p>")
             else: out.append(f"<div class=qz>{X.quiz_body({'base': base}, it, root, head=False, ans=o['ans'] is not False)}</div>")
-        else:
-            if RE_URL.match(b['url']):
-                cap = E(b['caption'].strip().split('\n')[0]) if b['caption'].strip() else E(b['url'])
-                out.append(f"<p class=embed>🔗 <a href='{E(b['url'])}' target=_blank rel='noopener noreferrer'>{cap}</a><br><small>Σύνδεσμος· η ενσωμάτωση (iframe) δεν είναι διαθέσιμη σε αυτή την έκδοση.</small></p>")
-            else: out.append(f"<p class=warn>⚠ embed: μη επιτρεπτός σύνδεσμος ({E(b['url'][:60])})</p>")
+        else: out.append(EM.render(b['url'], b['caption'], b.get('params'), domains, mode))
     return ''.join(out)
 
 

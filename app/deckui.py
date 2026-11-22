@@ -3,7 +3,7 @@ HTML από strings, χωρίς inline JS (φόρμες και κουμπιά), 
 import html, io, json, pathlib, re, zipfile
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from . import config, deck as D, deckexport as DX, deckmd, decktpl as T, settings, wizmodel as M
+from . import config, deck as D, deckexport as DX, deckmd, decktpl as T, embed as EM, settings, wizmodel as M
 from .library import select_questions
 from .main_auth import auth
 from .review import chk, db, fld, page, same_origin
@@ -15,7 +15,7 @@ E = html.escape
 CSS = (WCSS + "<style>.dks{display:grid;grid-template-columns:minmax(220px,300px) 1fr;gap:1rem;align-items:start}.dks ol{list-style:none;margin:0;padding:0}.dks li{border:1px solid var(--border);border-radius:8px;margin:.25rem 0;padding:.3rem .5rem}"
        ".dks li.cur{border-color:var(--accent,#2563eb);box-shadow:0 0 0 2px var(--accent,#2563eb) inset}.dks li.hid{opacity:.5}.dks li form{display:inline}.dks li .t{display:block;font-weight:600;text-decoration:none}"
        ".dks li small{opacity:.8}.dks textarea{width:100%;font-family:ui-monospace,Consolas,monospace}.dkprev{width:100%;height:420px;border:1px solid var(--border);border-radius:8px;background:#fff}"
-       ".dkbtn button{padding:.1rem .4rem}.warnb{color:#b45309}</style>")
+       ".dkbtn button{padding:.1rem .4rem}.dktb button{padding:.15rem .5rem}.warnb{color:#b45309}</style>")
 
 
 def fv(f, k, default=''):
@@ -41,9 +41,13 @@ def get_deck(c, did):
     return d
 
 
-def csp_html(body, status=200, headers=None):
+def domains(): return EM.hosts(settings.get('embed_domains'))
+
+
+def csp_html(body, status=200, headers=None, frames=()):
+    """HTML με αυστηρό CSP. frames: επιτρεπτά domains για frame-src (κενό = καθόλου iframe)."""
     h = HTMLResponse(body, status_code=status, headers=headers or {})
-    h.headers['Content-Security-Policy'] = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:"
+    h.headers['Content-Security-Policy'] = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; frame-src " + EM.csp_frames(frames)
     h.headers['X-Content-Type-Options'] = 'nosniff'
     return h
 
@@ -217,17 +221,27 @@ def deck_editor(request: Request, did: int, s: int = 0, msg: str = ''):
         add = (f"<form method=post action='/decks/{did}/add'>{fld('Νέα διαφάνεια από πρότυπο', f'<select class=r-list name=layout>{lay}</select>')}<input type=hidden name=after value='{cur['id'] if cur else ''}'>"
                "<button>+ Προσθήκη</button></form>")
         edit = slide_form(d, cur, c) if cur else '<p><i>Η παρουσίαση δεν έχει διαφάνειες· πρόσθεσε μία.</i></p>'
-        es = DX.effective(d, sl); prev = f"<iframe class=dkprev sandbox='allow-scripts' src='/decks/{did}/preview{hash_of(es, cur['id']) if cur else ''}'></iframe>" if es else ''
+        es = DX.effective(d, sl); prev = (f"<iframe class=dkprev id=dkprev name=dkprev sandbox='allow-scripts' src='/decks/{did}/preview{hash_of(es, cur['id']) if cur else ''}'></iframe>"
+                f"<p><a class=btn target=_blank href='/decks/{did}/preview{hash_of(es, cur['id']) if cur else ''}'>▶ Ολόκληρη η παρουσίαση (νέα καρτέλα)</a> <small>Εδώ φαίνεται η τρέχουσα διαφάνεια· ανανεώνεται καθώς γράφεις.</small></p>") if es else ''
         body = (f"{CSS}<h2>Παρουσίαση · {E(d['name'])}</h2><p><a href='/decks'>← Όλες οι παρουσιάσεις</a> · {E(T.RECIPE_LABEL.get(d['recipe'], ''))} · {len(sl)} διαφάνειες</p>"
                 + (f"<div class='adm adm-info'><p>{E(msg)}</p></div>" if msg else '')
                 + f"<div class=dks><div><ol>{''.join(li)}</ol>{add}</div><div>{edit}<h3>Προεπισκόπηση</h3>{prev}</div></div>"
-                + settings_panel(d, c) + export_panel(d))
+                + settings_panel(d, c) + export_panel(d) + "<script src='/static/deck.js'></script>")
         return page('Παρουσίαση', body)
     finally: c.close()
 
 
+TOOLBAR = ("<div class='bar dktb' role=toolbar aria-label='Εργαλειοθήκη μπλοκ'>"
+           + ''.join(f"<button type=button data-blk={k} title='{E(t)}'>{E(l)}</button>" for k, l, t in (
+               ('title', 'Τίτλος', 'Πήγαινε στο πεδίο τίτλου'), ('bullets', '• Bullets', 'Λίστα (ένα-ένα): βάζει και «Bullets ένα-ένα: ναι»'), ('step', 'Βήμα', 'Ομάδα που εμφανίζεται μαζί (::: step)'),
+               ('math', '$x$', 'Τύπος μέσα στη γραμμή'), ('mathblock', '$$', 'Τύπος σε δική του γραμμή'), ('image', 'Εικόνα', 'Εικόνα από /files/…'), ('link', 'Σύνδεσμος', 'Σύνδεσμος https'),
+               ('code', 'Κώδικας', 'Μπλοκ κώδικα'), ('cols', '2 στήλες', 'Δύο στήλες (::: cols, χωρισμός |||)'), ('quizmcq', 'Quiz ΠΕ', 'Quiz πολλαπλής επιλογής'), ('quiztf', 'Quiz Σ/Λ', 'Quiz Σωστό/Λάθος'),
+               ('embed', 'Embed', 'Ενσωμάτωση (μόνο επιτρεπτά domains)'), ('yt', 'YouTube', 'Βίντεο YouTube (nocookie)'), ('gg', 'GeoGebra', 'Υλικό GeoGebra'), ('cj', 'Κύκλωμα', 'CircuitJS/Falstad'),
+               ('notes', 'Σημειώσεις', 'Πήγαινε στις σημειώσεις ομιλητή'), ('bg', 'Φόντο', 'Πήγαινε στο χρώμα φόντου'))) + "</div>")
+
+
 def slide_form(d, s, c):
-    o = T.load_opts(s['opts'], deck=False); w = deckmd.warnings(s); did = d['id']
+    o = T.load_opts(s['opts'], deck=False); w = deckmd.warnings(s, domains()); did = d['id']
     lay = ''.join(opt(k, t, s['layout']) for k, t, *_ in T.LAYOUTS)
     fr = ''.join(opt(v, t, {None: '', True: '1', False: '0'}[o['frag']]) for v, t in (('', 'όπως η παρουσίαση'), ('1', 'ναι, ένα-ένα'), ('0', 'όχι')))
     tr = ''.join(opt(v, t, o['transition']) for v, t in [('', 'όπως η παρουσίαση')] + [(x, x) for x in T.TRANSITIONS])
@@ -236,9 +250,9 @@ def slide_form(d, s, c):
     src = f"<p><small>Πηγή: θέμα {E(s['src_item'])} · ερώτημα {E(s['src_qcode'])} · {E(s.get('src_unit') or '')}</small> <button form=rf name=act value=refresh>Ανανέωση από τη λύση</button></p>" if s.get('src_item') else ''
     bgc = inp('bgcolor', o['bg'].get('color', ''), 9); bgi = inp('bgimage', o['bg'].get('image', ''), 40)
     return (f"{src}<form id=rf method=post action='/decks/{did}/slide/{s['id']}'></form>" + (f"<div class='adm adm-warning'><p class=adm-t>Προσοχή</p><ul>{ws}</ul></div>" if w else '')
-            + f"<form method=post action='/decks/{did}/slide/{s['id']}'><fieldset><legend>Διαφάνεια {s['pos']}</legend>{fld('Διάταξη', sel('layout', lay))}"
+            + f"<form method=post id=dkform data-did={did} data-sid={s['id']} action='/decks/{did}/slide/{s['id']}'><fieldset><legend>Διαφάνεια {s['pos']}</legend>{fld('Διάταξη', sel('layout', lay))}"
               f"{fld('Τίτλος', inp('title', s['title'], 50))}"
-              f"{fld('Σώμα (Markdown, τύποι $..$, οδηγίες ::: cols | quiz | step | embed)', ta('body', s['body'], 12))}"
+              f"{TOOLBAR}{fld('Σώμα (Markdown, τύποι $..$, οδηγίες ::: cols | quiz | step | embed)', ta('body', s['body'], 12))}"
               f"{fld('Σημειώσεις ομιλητή (Markdown)', ta('notes', s['notes'], 3))}"
               f"{fld('Bullets ένα-ένα', sel('frag', fr))}{fld('Μετάβαση', sel('transition', tr))}{fld('Μορφή', sel('cls', cl))}"
               f"{fld('Φόντο: χρώμα (#rrggbb)', bgc)}{fld('Φόντο: εικόνα (/files/…png|jpg)', bgi)}"
@@ -341,9 +355,48 @@ def deck_rebuild(request: Request, did: int):
 def deck_preview(did: int):
     c = db()
     try:
-        d = get_deck(c, did); sl = D.slides(c, did)
-        return csp_html(DX.reveal(d, sl, config.load()['data_root']))
+        d = get_deck(c, did); sl = D.slides(c, did); ds = domains()
+        return csp_html(DX.reveal(d, sl, config.load()['data_root'], domains=ds), frames=ds)
     finally: c.close()
+
+
+@router.post('/decks/{did}/preview/{sid}', response_class=HTMLResponse, dependencies=[Depends(auth)])
+async def slide_preview(request: Request, did: int, sid: int):
+    """Ζωντανή προεπισκόπηση μιας διαφάνειας από τα πεδία της φόρμας (ΔΕΝ γράφει στη βάση)."""
+    same_origin(request); f = await request.form(); c = db()
+    try:
+        d = get_deck(c, did); cur = D.get_slide(c, did, sid)
+        if not cur: raise HTTPException(404, 'Δεν υπάρχει αυτή η διαφάνεια.')
+        o = {'frag': {'1': True, '0': False}.get(fv(f, 'frag')), 'transition': fv(f, 'transition'), 'cls': fv(f, 'cls'), 'bg': {'color': fv(f, 'bgcolor'), 'image': fv(f, 'bgimage')}, 'base': cur['opts']['base'], 'ans': cur['opts']['ans']}
+        tmp = dict(cur, layout=T.layout_ok(fv(f, 'layout')), title=fv(f, 'title')[:T.LIMITS['title']], body=raw(f, 'body')[:T.LIMITS['body']], notes=raw(f, 'notes')[:T.LIMITS['notes']],
+                   opts=T.dump_opts(o, deck=False), down=0, hidden=0)
+        d2 = dict(d, opts=dict(d['opts'], title_slide=False, toc=False, numbers=False)); ds = domains()
+        page_ = DX.reveal(d2, [tmp], config.load()['data_root'], domains=ds)
+        w = deckmd.warnings(tmp, ds)
+        if w: page_ = page_.replace('<body>', "<body><div style=\"position:fixed;top:0;left:0;right:0;z-index:99;background:#fff3cd;color:#664d03;font:13px sans-serif;padding:4px 8px\">⚠ " + E(' · '.join(w))[:600] + '</div>', 1)
+        return csp_html(page_, frames=ds)
+    finally: c.close()
+
+
+@router.get('/decks/{did}/embed', response_class=HTMLResponse, dependencies=[Depends(auth)])
+def deck_embed_test(did: int, u: str = '', ratio: str = '16:9'):
+    """Δοκιμή ενός embed σε σελίδα ψηλού επιπέδου (χωρίς sandbox της προεπισκόπησης)· μόνο για επιτρεπτά domains."""
+    ds = domains(); src = EM.to_src(u, {}, ds); ok, host, why = EM.check(src, ds)
+    if not ok: return csp_html(page_body_msg('Δεν επιτρέπεται: ' + why), 422, frames=ds)
+    r = ratio if ratio in EM.RATIOS else '16:9'
+    body = (f"<!doctype html><meta charset=utf-8><title>Δοκιμή embed</title><body style='margin:0;font:14px sans-serif'><p style='margin:6px'>Δοκιμή: {E(host)} · <a href='{E(u, quote=True)}' target=_blank rel='noopener noreferrer'>άνοιγμα σε νέα καρτέλα</a></p>"
+            f"<div style='aspect-ratio:{EM.RATIOS[r]};width:96vw;margin:0 auto'><iframe src='{E(src, quote=True)}' sandbox='{EM.IFRAME_SANDBOX}' allow='{EM.IFRAME_ALLOW}' allowfullscreen referrerpolicy='strict-origin-when-cross-origin' style='width:100%;height:100%;border:0'></iframe></div>")
+    h = csp_html(body, frames=ds); h.headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; frame-src " + EM.csp_frames(ds); return h
+
+
+def page_body_msg(m): return f"<!doctype html><meta charset=utf-8><p style='font:14px sans-serif;margin:1em'>{E(m)}</p>"
+
+
+DECK_JS = (pathlib.Path(__file__).parent / 'static' / 'deck.js').read_text(encoding='utf-8')
+
+
+@router.get('/static/deck.js', include_in_schema=False)
+def deck_js(): return Response(DECK_JS, media_type='application/javascript')
 
 
 def with_help(act, data, fname, mime, d):
@@ -372,7 +425,7 @@ async def deck_store(request: Request, did: int):
     same_origin(request); f = await request.form(); c = db()
     try:
         d = get_deck(c, did); sl = D.slides(c, did); root = config.load()['data_root']; where = fv(f, 'where')
-        html_ = DX.reveal(d, sl, root); title = d.get('title') or d['name']
+        html_ = DX.reveal(d, sl, root, publish=(where == 'publish')); title = d.get('title') or d['name']
         if where == 'publish':
             from . import publish
             s_ = publish.save_site(title, {'index.html': html_.encode('utf-8')}, source=f"παρουσίαση: {d['name']}")

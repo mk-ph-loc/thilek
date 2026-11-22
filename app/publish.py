@@ -14,7 +14,13 @@ E = html.escape
 MIME = {'.html': 'text/html; charset=utf-8', '.json': 'application/json', '.txt': 'text/plain; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.pdf': 'application/pdf'}
 ALLOWED = set(MIME)
 basic = HTTPBasic(auto_error=False)
-CSP = "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; media-src data:; sandbox allow-scripts allow-popups"
+CSP = "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; media-src data:; sandbox allow-scripts allow-popups"      # βασική μορφή
+
+
+def csp():
+    """CSP των δημοσιευμένων σελίδων: frame-src μόνο για τα ΤΡΕΧΟΝΤΑ επιτρεπτά domains (αν αφαιρεθεί domain, σταματά και στις παλιές δημοσιεύσεις)· ποτέ allow-same-origin."""
+    from . import embed, settings
+    return CSP.replace("media-src data:;", "media-src data:; frame-src " + embed.csp_frames(embed.hosts(settings.get('embed_domains'))) + ";").replace("allow-popups", "allow-popups allow-popups-to-escape-sandbox")
 
 
 def base():
@@ -123,7 +129,7 @@ def publish_delete(request: Request, slug: str):
 
 def _send(path: pathlib.Path):
     ext = path.suffix.lower()
-    return Response(path.read_bytes(), media_type=MIME.get(ext, 'application/octet-stream'), headers={'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store'})
+    return Response(path.read_bytes(), media_type=MIME.get(ext, 'application/octet-stream'), headers={'Content-Security-Policy': csp(), 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store'})
 
 
 @router.get('/p/', response_class=HTMLResponse)

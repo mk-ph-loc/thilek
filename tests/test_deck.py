@@ -197,7 +197,7 @@ def test_solutions_flow_source_to_editor(cl):
 
 def test_preview_csp_and_no_external(cl):
     did, _ = mk(cl); r = cl.get(f'/decks/{did}/preview', auth=A); csp = r.headers['content-security-policy']
-    assert r.status_code == 200 and "default-src 'none'" in csp and 'connect-src' not in csp and 'frame-src' not in csp
+    assert r.status_code == 200 and "default-src 'none'" in csp and 'connect-src' not in csp and 'frame-src https://youtube.com https://*.youtube.com' in csp and 'frame-src *' not in csp and 'https: ' not in csp
 
 
 def test_store_to_server_and_publish(cl):

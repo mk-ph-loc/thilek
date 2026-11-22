@@ -17,7 +17,7 @@ LAYOUTS = (
     ('code', 'Κώδικας', 'Πρόγραμμα', '```python\nprint(U / R)\n```'),
     ('summary', 'Ανακεφαλαίωση', 'Ανακεφαλαίωση', '1. πρώτο συμπέρασμα\n2. δεύτερο συμπέρασμα'),
     ('blank', 'Κενή', '', ''),
-    ('embed', 'Ενσωμάτωση (0.33)', 'Προσομοίωση', '::: embed https://www.falstad.com/circuit/circuitjs.html\nΚύκλωμα RC\n:::'),
+    ('embed', 'Ενσωμάτωση', 'Προσομοίωση', '::: embed https://www.falstad.com/circuit/circuitjs.html\nΚύκλωμα RC\n:::'),
 )
 LAYOUT_KEYS = tuple(l[0] for l in LAYOUTS)
 LAYOUT_LABEL = {l[0]: l[1] for l in LAYOUTS}
