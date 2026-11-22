@@ -138,6 +138,11 @@ HELP = {
         cannot=['Δεν διαγράφει ούτε αλλάζει PDF/Word ΙΕΠ, βιβλίο, ύλη, ευρετήριο, φακέλους συστήματος και βάση (προστασίες με εξήγηση).', 'Δεν τρέχει rebuild μόνος του.'],
         see=[('/fb/trash', 'Κάδος'), ('/lyseis', 'Λύσεις')],
         data=f'Τα ίδια τα αρχεία {FILES}· το ιστορικό ενεργειών στον πίνακα `fileops` {DB}.'),
+    'fileops': dict(title='Εργαλεία αρχείων', sec='33',
+        can=['Χωρίζεις ένα PDF σε κομμάτια (περιοχές σελίδων ή «κάθε N»), συγχωνεύεις PDF με σελιδοδείκτες και μετονομάζεις πολλά αρχεία με μοτίβο.', 'Βλέπεις πάντα προεπισκόπηση πριν γίνει οποιαδήποτε αλλαγή.'],
+        cannot=['Δεν αντικαθιστά υπάρχοντα αρχεία και δεν αλλάζει τα πρωτότυπα: τα νέα PDF και τα αντίγραφα γράφονται μόνο σε φάκελο 07_EXAGOGES.', 'Η μετονομασία επί τόπου δεν δουλεύει σε PDF/Word ΙΕΠ, βιβλίο, ύλη, φακέλους συστήματος (χρησιμοποίησε «σε αντίγραφα»). Δεν κάνει rebuild.'],
+        see=[('/fb', 'Αρχεία'), ('/fb/trash', 'Κάδος'), ('/tools/merge', 'Συγχώνευση θεμάτων')],
+        data=f'Τα νέα αρχεία {FILES}· το ιστορικό (split, merge, copy, rename) στον πίνακα `fileops` {DB}.'),
     'trash': dict(title='Κάδος αρχείων', sec='16',
         can=['Επαναφέρεις αρχεία στην αρχική θέση ή τα διαγράφεις οριστικά.'],
         cannot=['Δεν επαναφέρει αν στην αρχική θέση υπάρχει ήδη κάτι.', 'Δεν καθαρίζει αυτόματα (δεν υπάρχει χρονοδιάγραμμα).'], see=[('/fb', 'Αρχεία')],
@@ -165,7 +170,7 @@ ROUTES = [
     (r'^/search', 'search'), (r'^/coverage', 'coverage'), (r'^/tags', 'tags'), (r'^/saved', 'saved'), (r'^/collections/', 'collection'),
     (r'^/tools/merge', 'merge'), (r'^/tools/html', 'htmlx'), (r'^/exams', 'exams'), (r'^/quizzes/?$', 'quizzes'), (r'^/quizzes/\d+$', 'quizzes'),
     (r'^/lyseis', 'lyseis'), (r'^/lysi/', 'lysi'), (r'^/docs/?$', 'docs'), (r'^/docs/\d+$', 'doc'),
-    (r'^/fb/trash', 'trash'), (r'^/fb', 'fb'), (r'^/toolbox', 'toolbox'), (r'^/settings', 'settings'), (r'^/sync', 'sync'), (r'^/manual', 'manual'),
+    (r'^/fileops', 'fileops'), (r'^/fb/trash', 'trash'), (r'^/fb', 'fb'), (r'^/toolbox', 'toolbox'), (r'^/settings', 'settings'), (r'^/sync', 'sync'), (r'^/manual', 'manual'),
 ]
 
 
