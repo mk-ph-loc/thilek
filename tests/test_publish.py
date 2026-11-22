@@ -26,7 +26,8 @@ def test_each_by_item_zip_has_pages_index_data(cl):
     assert {'index.html', 'data.json', 'README.txt', 't1.html'} <= n
     d = json.loads(z.read('data.json')); assert len(d['pages']) == 1 and d['total'] == 10 and d['skipped'] == ['1/2.3'] and 'keys' not in d['pages'][0]
     ix = z.read('index.html').decode('utf-8'); assert 't1.html' in ix and 'Θέμα 1' in ix and '1/2.3' in ix and '10 μον.' in ix
-    assert b'reveal' in z.read('t1.html').lower()
+    assert b'reveal' in z.read('t1.html').lower() 
+    assert 'reveal-help.md' in n and b'Reveal.js' in z.read('reveal-help.md')
 
 
 def test_each_by_question_and_student_format(cl):

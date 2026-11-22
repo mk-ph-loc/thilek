@@ -4,10 +4,10 @@ import datetime, io, json, re, zipfile
 
 FORMATS = (('excel', 'Excel (πίνακας ερωτημάτων με συνδέσμους σε αρχεία)'), ('md', 'Markdown έγγραφο (/docs, από εκεί και Word)'),
            ('htmldoc', 'Έγγραφο HTML για εκτύπωση (εικόνες ερωτημάτων)'), ('reveal', 'Reveal.js (λύσεις εκπαιδευτικού)'), ('student', 'HTML μαθητή (λύσεις εκπαιδευτικού)'),
-           ('moodle', 'Moodle XML (quiz από λύσεις εκπαιδευτικού)'), ('merge', 'PDF συγχώνευσης θεμάτων'), ('exam', 'Διαγώνισμα/τεστ Word (πρότυπο σχολείου)'),
+           ('pptx', 'PowerPoint .pptx (λύσεις εκπαιδευτικού, μέσω Pandoc)'), ('moodle', 'Moodle XML (quiz από λύσεις εκπαιδευτικού)'), ('merge', 'PDF συγχώνευσης θεμάτων'), ('exam', 'Διαγώνισμα/τεστ Word (πρότυπο σχολείου)'),
            ('gform', 'Google Form (script Apps Script από λύσεις εκπαιδευτικού)'), ('h5p', 'H5P Question Set (δεδομένα JSON + οδηγίες)'))
 FORMAT_KEYS = tuple(k for k, _ in FORMATS)
-NEEDS_SOL = ('reveal', 'student', 'moodle', 'gform', 'h5p')                  # θέλουν αρχείο λύσης εκπαιδευτικού
+NEEDS_SOL = ('reveal', 'student', 'pptx', 'moodle', 'gform', 'h5p')                  # θέλουν αρχείο λύσης εκπαιδευτικού
 POINTS_HONORED = ('excel', 'md', 'exam')                             # οι υπόλοιπες παίρνουν μονάδες από τα αρχεία/βάση
 UNSEL = (('omit', 'Να μην εμφανιστούν καθόλου'), ('hide', 'Κρυφά (μπαίνουν στο αρχείο αλλά δεν φαίνονται)'),
          ('append', 'Στο τέλος, μη εμφανιζόμενα'), ('manual', 'Θα διαλέξω εγώ ποια θα εμφανιστούν'))
@@ -17,7 +17,7 @@ CRITERIA = (('q', 'Λέξεις-κλειδιά'), ('qtype', 'Τύπος ερωτ
 CRITERIA_KEYS = tuple(k for k, _ in CRITERIA)
 
 DEFAULT = {'criteria': {}, 'members': [], 'mode': 'merge', 'gran': 'item', 'order': 'item', 'points': {}, 'target': None, 'unsel': 'omit', 'manual_sel': [],
-           'format': 'excel', 'title': 'Αναφορά ασκήσεων', 'style': 'kids', 'sx': [], 'hide': True, 'mdmode': 'image', 'numbering': 'new',
+           'format': 'excel', 'title': 'Αναφορά ασκήσεων', 'style': 'kids', 'sx': [], 'hide': True, 'frag': False, 'mdmode': 'image', 'numbering': 'new',
            'link_prefix': 'pdf/', 'bundle': False, 'store': 'download', 'preview': True,
            'x_school': '', 'x_class': '', 'x_date': '', 'x_dur': '', 'x_sub': '', 'x_notes': '', 'x_course': '', 'x_tpl': 'default', 'x_ver': 'student', 'x_grp': 'item', 'x_mode': 'image',
            'cmp': False, 'm_cat': 'single', 'm_tags': True, 'g_name': 'required', 'g_img': 'default'}

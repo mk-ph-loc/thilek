@@ -11,7 +11,8 @@ router = APIRouter()
 APP = pathlib.Path(__file__).parent
 PATH = APP / 'manual.md'
 MANUALS = {'manual': ('manual.md', 'Οδηγίες χρήσης', '/manual', 'thilek-manual.md'), 'faq': ('manual_faq.md', 'Ερωτήσεις-απαντήσεις', '/manual/faq', 'thilek-faq.md'),
-           'db': ('manual_db.md', 'Βάση δεδομένων', '/manual/db', 'thilek-manual-vasi.md'), 'system': ('manual_system.md', 'Διάγραμμα συστήματος', '/manual/system', 'thilek-system.md')}
+           'db': ('manual_db.md', 'Βάση δεδομένων', '/manual/db', 'thilek-manual-vasi.md'), 'system': ('manual_system.md', 'Διάγραμμα συστήματος', '/manual/system', 'thilek-system.md'),
+           'reveal': ('manual_reveal.md', 'Βοήθεια Reveal', '/manual/reveal', 'thilek-reveal-help.md')}
 
 CSS = ("<style>.man{display:grid;grid-template-columns:230px 1fr;gap:1.2rem;align-items:start}.mantoc{position:sticky;top:calc(var(--hh,3rem) + .6rem);max-height:calc(92vh - var(--hh,3rem));overflow:auto;font-size:.92rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);padding:.6rem .8rem}"
        ".mantoc a{display:block;padding:.15rem 0;text-decoration:none}.manbody{max-width:900px;line-height:1.55}.manbody h2{margin-top:1.8rem;border-bottom:1px solid var(--border);padding-bottom:.2rem}.manbody pre{background:var(--card);border:1px solid var(--border);padding:.6rem;overflow:auto;border-radius:var(--radius);max-height:none}"

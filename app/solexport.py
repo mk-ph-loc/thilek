@@ -1,6 +1,6 @@
 """Εξαγωγές λύσεων εκπαιδευτικού (μόνο από επιλογή): Reveal.js (αυτόνομο HTML, offline), σύνθετο Markdown/Word (νέο έγγραφο /docs), Moodle XML.
 Moodle XML: ΔΕΝ έχει δοκιμαστεί σε πραγματικό Moodle· βγαίνει μόνο από τα quiz blocks των αρχείων λύσεων (όχι από τα quiz της εφαρμογής)."""
-import base64, datetime, functools, html, pathlib, re
+import base64, datetime, functools, html, os, pathlib, re, shutil, subprocess, tempfile
 from fastapi import HTTPException
 from fastapi.responses import RedirectResponse, Response
 from . import config, qsol
@@ -75,11 +75,19 @@ def hd(r, k, style, extra=''):
     badge = f"<span class=badge>{ICON[k]}</span>" if STYLES[style]['icons'] else ''
     return f"<div class=hd>{badge}<h2>{E(LABEL[k])}{extra}</h2><span class=who>{E(label(r))}</span></div>"
 
-def reveal_html(rows, title, include, style='calm', root=''):
+def fragmentize(h):
+    """«Bullets ένα-ένα»: κάθε στοιχείο λίστας γίνεται fragment του Reveal (εμφανίζεται με κάθε βήμα). Δεν πειράζει το κείμενο μέσα σε κώδικα (εκεί τα < είναι escaped)."""
+    def f(m):
+        a = m.group(1) or ''
+        if re.search(r'\bclass\s*=', a): return '<li' + re.sub(r'class\s*=\s*([\"\'])', lambda x: f'class={x.group(1)}fragment ', a, count=1) + '>'
+        return f'<li class=fragment{a}>'
+    return re.sub(r'<li(\s[^>]*)?>', f, h)
+
+def reveal_html(rows, title, include, style='calm', root='', frag=False):
     a = assets(); style = style_of(style); theme = STYLES[style]['base']
     sl = [f"<section class=u-title><h1>{E(title)}</h1><p>{len(rows)} λύσεις · TH-ILEK · {datetime.date.today().isoformat()}</p><ul class=toc>" + ''.join(f"<li>{E(label(r))}</li>" for r in rows) + '</ul></section>']
     for r in rows:
-        md = lambda t: render_md(t, r['base'], embed_root=root)
+        md = (lambda t: fragmentize(render_md(t, r['base'], embed_root=root))) if frag else (lambda t: render_md(t, r['base'], embed_root=root))
         for k, kind, d in unit_items(r, include):
             if kind == 'md': sl.append(f"<section class='u u-{k}'>{hd(r, k, style)}{md(d)}</section>")
             elif kind == 'parts':                                                          # κάθετη στοίβα: ένα slide ανά βήμα (γραμμή «--»)
@@ -96,6 +104,56 @@ def reveal_html(rows, title, include, style='calm', root=''):
     return (f"<!doctype html><html lang='el'><head><meta charset='utf-8'><meta name=viewport content='width=device-width,initial-scale=1'><title>{E(title)}</title>"
             f"{st(a['reveal_css'])}{st(a[theme])}{st(a['katex_css'])}{st(reveal_css(style))}</head><body><div class=reveal><div class=slides>{''.join(sl)}</div></div>"
             f"{sc(a['katex_js'])}{sc(a['auto_js'])}{sc(a['reveal_js'])}{sc(init)}</body></html>")
+
+# ---------- PowerPoint (Pandoc) ----------
+SAFE_IMG = re.compile(r'^images/[A-Za-z0-9_.-]+\.(?:png|jpe?g|gif)$', re.I)
+ANY_IMG = re.compile(r'!\[([^\]]*)\]\(([^)]*)\)')
+
+def pandoc_path(): return shutil.which('pandoc')
+
+def _pptx_images(text, base, root):
+    """Μόνο εικόνες images/<όνομα> της λύσης (png/jpg/gif) που υπάρχουν μέσα στον data_root γίνονται απόλυτες διαδρομές· οτιδήποτε άλλο (SVG, άλλη διαδρομή, URL) πέφτει σε κείμενο εναλλακτικής περιγραφής."""
+    rootp = pathlib.Path(root).resolve()
+    def one(m):
+        alt, tgt = m.group(1), m.group(2).strip().split(' ')[0]
+        if SAFE_IMG.match(tgt):
+            try: p = (rootp / base / tgt).resolve()
+            except OSError: p = None
+            if p and rootp in p.parents and p.is_file(): return f'![{alt}]({p})'
+        return f'*[{alt or "εικόνα"}]*'
+    return outside_fences(text, lambda l: ANY_IMG.sub(one, l))
+
+def pptx_markdown(rows, title, include, root, frag=True):
+    """Markdown για Pandoc: # = τίτλος ερωτήματος (διαφάνεια ενότητας), ## = διαφάνεια. Κάθε βήμα της λύσης (γραμμή «--») και κάθε στοιχείο quiz είναι δική του διαφάνεια."""
+    out = []
+    for r in rows:
+        out += [f"# {label(r)}", '']
+        for key, kind, d in unit_items(r, include):
+            if kind == 'md': out += [f"## {LABEL[key]}", '', fix_md(d, r['base'], 0) if False else _pptx_images(d, r['base'], root), '']
+            elif kind == 'parts':
+                for i, b in enumerate(d, 1): out += [f"## {LABEL[key]}" + (f' ({i}/{len(d)})' if len(d) > 1 else ''), '', _pptx_images(b, r['base'], root), '']
+            else:
+                for q in d:
+                    t = [f"## Quiz {q['n']}", '', ' '.join(q['stem'].split()), '']
+                    if q.get('image') and IMG.match(q['image']): t += [_pptx_images(f"![](images/{q['image'].split('/')[-1]})", r['base'], root), '']
+                    t += [f"- {LET[i] if i < len(LET) else i + 1}. {o}" for i, o in enumerate(q.get('options') or [])] + ['']
+                    t += [f"**Απάντηση:** {answer_text(q)}" + (f" — {' '.join(q['feedback'].split())}" if q.get('feedback') else ''), '']
+                    out += t
+    return normalize_math_md('\n'.join(out))
+
+def pptx_bytes(rows, title, include, root):
+    """Pandoc → .pptx (οι τύποι $..$ γίνονται εξισώσεις Office). Σταθερά ορίσματα, χωρίς shell· raw HTML/TeX/attributes απενεργοποιημένα· όριο χρόνου 90 s."""
+    pd = pandoc_path()
+    if not pd: raise HTTPException(422, 'Το Pandoc δεν είναι εγκατεστημένο στον server (apt install pandoc). Η εξαγωγή PowerPoint χρειάζεται Pandoc.')
+    md = pptx_markdown(rows, title, include, root)
+    with tempfile.TemporaryDirectory() as td:
+        out = pathlib.Path(td) / 'out.pptx'
+        cmd = [pd, '-f', 'markdown-raw_html-raw_attribute-raw_tex-yaml_metadata_block-pandoc_title_block-link_attributes-fenced_divs-bracketed_spans-native_divs-native_spans', '-t', 'pptx',
+               '--slide-level=2', '--metadata', f'title={title}', '-o', str(out)]
+        try: pr = subprocess.run(cmd, input=md.encode('utf-8'), capture_output=True, timeout=90, cwd=td, env={'PATH': os.environ.get('PATH', '/usr/bin:/bin'), 'HOME': td})
+        except subprocess.TimeoutExpired: raise HTTPException(422, 'Το Pandoc άργησε πάνω από 90 δευτερόλεπτα· επίλεξε λιγότερες λύσεις.')
+        if pr.returncode != 0 or not out.is_file(): raise HTTPException(422, 'Το Pandoc απέτυχε: ' + pr.stderr.decode('utf-8', 'replace')[:300])
+        return out.read_bytes()
 
 # ---------- σύνθετο Markdown ----------
 def fix_md(text, base, demote=2):
@@ -208,12 +266,14 @@ def moodle_xml(rows, title, root='', cat='single', tags=False):
     return '\n'.join(out) + '\n', skipped, n
 
 # ---------- κοινή είσοδος (μπάρα ενεργειών /select/act και σελίδα /lysi) ----------
-def export(c, act, keys, sx=None, title='', theme='', hide=True):
+def export(c, act, keys, sx=None, title='', theme='', hide=True, frag=False):
     rows = load(c, keys)
     if not rows: raise HTTPException(422, 'Κανένα από τα επιλεγμένα ερωτήματα δεν έχει λύση εκπαιδευτικού (αρχείο .md). Δες τη σελίδα «Λύσεις».')
     inc = include_of(sx); style = style_of(theme); title = (title or '').strip()[:200] or 'Λύσεις εκπαιδευτικού'; root = config.load()['data_root']
     if act == 'reveal':
-        return Response(reveal_html(rows, title, inc, style, root), media_type='text/html; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="thilek-reveal.html"'})
+        return Response(reveal_html(rows, title, inc, style, root, frag), media_type='text/html; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="thilek-reveal.html"'})
+    if act == 'pptx':
+        return Response(pptx_bytes(rows, title, inc, root), media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', headers={'Content-Disposition': 'attachment; filename="thilek-presentation.pptx"'})
     if act == 'html':
         from .solhtml import student_html
         return Response(student_html(rows, title, inc, style, root, bool(hide)), media_type='text/html; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="thilek-mathitis.html"'})

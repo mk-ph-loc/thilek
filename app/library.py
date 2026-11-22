@@ -138,8 +138,8 @@ def sol_controls(style='kids'):
     pre = ''.join(f"<option value='{','.join(o)}'>{html.escape(t)}</option>" for _, t, o in PRESETS)
     sty = ''.join(f"<option value={k}{' selected' if k == (style if style in STYLES else 'kids') else ''}>{html.escape(v['label'])}</option>" for k, v in STYLES.items())
     return (f"{SOLCTL_CSS}<div class=solctl><div class=solrow>Ενότητες και σειρά: <select class=solpre><option value=''>— έτοιμη διάταξη —</option>{pre}</select> <small>ή τσεκάρισμα και ↑↓</small></div><ul class=solord>{items}</ul>"
-            f"<div class=solrow>τίτλος <input name=sol_title size=22 value='Λύσεις εκπαιδευτικού'> στυλ <select name=sstyle>{sty}</select> <label><input type=checkbox name=hide value=1 checked> κρυφές λύσεις με κλικ (HTML μαθητή)</label></div>"
-            "<div class=solbtn><button name=act value=reveal>Reveal.js</button> <button name=act value=html>HTML μαθητή</button> <button name=act value=solmd>Markdown/Word</button> <button name=act value=moodle>Moodle XML</button></div></div>"
+            f"<div class=solrow>τίτλος <input name=sol_title size=22 value='Λύσεις εκπαιδευτικού'> στυλ <select name=sstyle>{sty}</select> <label><input type=checkbox name=hide value=1 checked> κρυφές λύσεις με κλικ (HTML μαθητή)</label> <label><input type=checkbox name=frag value=1> bullets ένα-ένα (Reveal)</label> <a href='/manual/reveal'>βοήθεια Reveal</a></div>"
+            "<div class=solbtn><button name=act value=reveal>Reveal.js</button> <button name=act value=html>HTML μαθητή</button> <button name=act value=solmd>Markdown/Word</button> <button name=act value=moodle>Moodle XML</button> <button name=act value=pptx title='Χρειάζεται Pandoc στον server'>PowerPoint (.pptx)</button></div></div>"
             "<script src='/static/solctl.js' defer></script>")
 
 def expand(c, ids, qids):
@@ -218,7 +218,7 @@ def tags_delete(request: Request, tag: str = Form(...)):
 def act(request: Request, act: str = Form(...), ids: list[str] = Form([]), qids: list[int] = Form([]), exam_id: str = Form(''), grp: int = Form(1), tag: str = Form(''), name: str = Form(''),
         title: str = Form('Σύνθετο έγγραφο ασκήσεων'), numbering: str = Form('new'), group: str = Form(''), solutions: str = Form(''), sol: str = Form(''), book: str = Form(''),
         criteria: str = Form('{}'), back: str = Form(''), quiz_id: str = Form(''), quiz_name: str = Form(''), mdmode: str = Form('image'),
-        sx: list[str] = Form([]), sol_title: str = Form(''), rtheme: str = Form(''), sstyle: str = Form(''), hide: str = Form('')):
+        sx: list[str] = Form([]), sol_title: str = Form(''), rtheme: str = Form(''), sstyle: str = Form(''), hide: str = Form(''), frag: str = Form('')):
     same_origin(request); c = db(); ids = [i for i in dict.fromkeys(ids) if i.isdigit()]
     members = expand(c, ids, qids); back = safe_back(back)
     def done():
@@ -253,9 +253,9 @@ def act(request: Request, act: str = Form(...), ids: list[str] = Form([]), qids:
     if act == 'doc':
         from .collections import compose
         r = compose(c, members, {'title': title, 'numbering': numbering, 'group': group, 'solutions': bool(solutions)}); c.close(); return r
-    if act in ('reveal', 'html', 'solmd', 'moodle'):                 # λύσεις εκπαιδευτικού (μόνο όσα επιλεγμένα έχουν αρχείο λύσης)
+    if act in ('reveal', 'html', 'solmd', 'moodle', 'pptx'):                 # λύσεις εκπαιδευτικού (μόνο όσα επιλεγμένα έχουν αρχείο λύσης)
         from .solexport import export
-        try: return export(c, act, members, sx, sol_title, sstyle or rtheme, bool(hide))
+        try: return export(c, act, members, sx, sol_title, sstyle or rtheme, bool(hide), bool(frag))
         finally: c.close()
     if act == 'merge':
         items = sorted({m[0] for m in members}, key=int)

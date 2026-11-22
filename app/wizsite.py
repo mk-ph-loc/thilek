@@ -54,7 +54,7 @@ def build_site(c, st, es):
     inc = X.include_of(st['sx']); style = X.style_of(st['style']); files = {}
     for p in model['pages']:
         rows = X.load(c, p['keys'])
-        if fm == 'reveal': h = X.reveal_html(rows, p['title'], inc, style, root)
+        if fm == 'reveal': h = X.reveal_html(rows, p['title'], inc, style, root, bool(st.get('frag')))
         else:
             from .solhtml import student_html
             h = student_html(rows, p['title'], inc, style, root, bool(st['hide']))

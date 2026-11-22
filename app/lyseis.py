@@ -76,12 +76,12 @@ def lyseis_scan(request: Request):
     return RedirectResponse('/lyseis?msg=' + quote(qsol.summary(res)), status_code=303)
 
 @router.post('/lyseis/export', dependencies=[Depends(auth)])
-def lyseis_export(request: Request, act: str = Form(...), keys: list[str] = Form([]), sx: list[str] = Form([]), sol_title: str = Form(''), rtheme: str = Form(''), sstyle: str = Form(''), hide: str = Form('')):
+def lyseis_export(request: Request, act: str = Form(...), keys: list[str] = Form([]), sx: list[str] = Form([]), sol_title: str = Form(''), rtheme: str = Form(''), sstyle: str = Form(''), hide: str = Form(''), frag: str = Form('')):
     """Εξαγωγή με κλειδιά «ID|ερώτημα» (δουλεύει και για ορφανά αρχεία χωρίς ερώτημα στη βάση)."""
     same_origin(request); ks = [tuple(k.split('|', 1)) for k in keys if '|' in k]
     if not ks: raise HTTPException(422, 'Δεν επιλέχθηκε τίποτα.')
     c = db()
-    try: return solexport.export(c, act, ks, sx, sol_title, sstyle or rtheme, bool(hide))
+    try: return solexport.export(c, act, ks, sx, sol_title, sstyle or rtheme, bool(hide), bool(frag))
     finally: c.close()
 
 def raw_text(r):
