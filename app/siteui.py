@@ -132,7 +132,7 @@ def export_panel(s, c):
 def publish_panel(s):
     from . import publish
     sid, pub = s['id'], s['opts']['pub']
-    cur = (f"<p>Δημοσιευμένο στο <a href='/p/{E(pub)}/'>/p/{E(pub)}/</a> (η ίδια διεύθυνση κρατιέται όταν ενημερώνεις).</p>" if pub and (publish.base() / pub).is_dir() else '<p>Δεν έχει δημοσιευτεί ακόμα.</p>')
+    cur = (f"<p>Δημοσιευμένο στο <a href='/p/{E(pub)}/'>/p/{E(pub)}/</a> · <a href='/publish/{E(pub)}/qr' target=_blank>QR</a> (η ίδια διεύθυνση κρατιέται όταν ενημερώνεις).</p>" if pub and (publish.base() / pub).is_dir() else '<p>Δεν έχει δημοσιευτεί ακόμα.</p>')
     warn = '' if publish.get_pw_hash() else "<div class='adm adm-warning'><p class=adm-t>Δεν υπάρχει κωδικός μαθητή</p><p>Ορίστε τον στις <a href='/publish'>Δημοσιεύσεις</a>· μέχρι τότε ανοίγει μόνο με κωδικό διαχειριστή.</p></div>"
     ans = 'με έλεγχο απαντήσεων' if s['opts']['quiz_answers'] == 'show' else 'ΧΩΡΙΣ απαντήσεις'
     return (f"<fieldset><legend>Δημοσίευση για τους μαθητές</legend>{cur}{warn}<p><small>Quiz: <b>{ans}</b> (αλλάζει στις Ρυθμίσεις site). Η κατάργηση γίνεται από τις <a href='/publish'>Δημοσιεύσεις</a>.</small></p>"

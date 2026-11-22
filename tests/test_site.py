@@ -375,3 +375,41 @@ def test_blocks_designer_rejects_bad_input(cl):
     r = cl.post(U, data={'n': '3', 'act': 'save', 'title': 'Τ', 'slug': 'x', 'kind': 'page', 'b0_t': 'evil', 'b0_text': 'x', 'b1_t': 'embed', 'b1_a': 'javascript:alert(1)', 'b1_h': '99999', 'b2_t': 'quiz-ref', 'b2_a': 'abc; DROP'}, auth=A, headers=H, follow_redirects=False)
     assert r.status_code == 303; body = S.get_page(conn(), sid, pid)['body']; assert 'evil' not in body and 'DROP' not in body and 'h=99999' not in body
     c = conn(); h, w = S.page_html(ctx_of(c, sid), S.get_page(c, sid, pid)); assert w and 'href="javascript' not in h and "href='javascript" not in h and 'src="javascript' not in h and "src='javascript" not in h
+
+
+# ---------- 0.37: QR, εξάσκηση, flashcards, Anki ----------
+def test_qr_encoder_shape_and_limits():
+    from app import qr
+    M = qr.encode('http://192.168.1.10:8000/p/quiz-1-practice/'); n = len(M); assert n in (29, 33, 37) and all(len(r) == n for r in M)
+    assert M[0][:7] == [True] * 7 and M[6][:7] == [True] * 7 and M[3][1] is False and M[n - 8][8] is True          # εντοπιστής + σκούρο module
+    assert qr.encode('x' * 213) and (len(qr.encode('x' * 213)) - 17) // 4 == 10
+    with pytest.raises(ValueError): qr.encode('x' * 214)
+    s = qr.svg('http://a.b/', label='"><script>'); assert s.startswith('<svg') and '<script>' not in s and '&quot;' in s and 'viewBox' in s
+
+
+def _quiz_with_items(c, name='Κουίζ <b>'):
+    c.execute("INSERT INTO quiz(name,description) VALUES(?,?)", (name, 'π')); qid = c.execute('SELECT max(id) FROM quiz').fetchone()[0]
+    rows = [('tf', 'Ισχύει ο νόμος του Ohm;', '[]', 'Σωστό', 'ναι', 'T1', 'q1'), ('mcq', 'Μονάδα αντίστασης;', '["Volt","Ohm","Watt"]', '1', '', 'T1', 'q2'),
+            ('free', 'Τι είναι ρεύμα; </script><b>x</b>', '[]', 'Ροή φορτίων', '', '', ''), ('free', 'Χωρίς απάντηση', '[]', '', '', '', '')]
+    for i, (k, stem, o, a, fb, si, sq) in enumerate(rows, 1):
+        c.execute("INSERT INTO quiz_item(quiz_id,pos,kind,stem,options,answer,points,feedback,src_item,src_qcode,use_image,status) VALUES(?,?,?,?,?,?,1,?,?,?,0,'ok')", (qid, i, k, stem, o, a, fb, si, sq))
+    return qid
+
+
+def test_practice_cards_anki_and_publish(cl):
+    c = conn(); qid = _quiz_with_items(c); c.commit(); c.close()
+    r = cl.get(f'/quizzes/{qid}/practice', auth=A); assert r.status_code == 200 and "script-src 'unsafe-inline'" in r.headers['content-security-policy'] and 'application/json' in r.text
+    assert '</script><b>' not in r.text and '\\u003c/script\\u003e' in r.text and 'Κουίζ &lt;b&gt;' in r.text and 'innerHTML' not in r.text          # τα δεδομένα δεν σπάνε το script, DOM μόνο με textContent
+    k = cl.get(f'/quizzes/{qid}/cards', auth=A); assert k.status_code == 200 and 'Χωρίς απάντηση' in k.text and 'innerHTML' not in k.text
+    a = cl.get(f'/quizzes/{qid}/anki.tsv', auth=A); assert a.status_code == 200 and a.headers['x-cards'] == '3' and a.headers['x-skipped'] == '1'
+    lines = a.text.strip().split('\n'); assert lines[:3] == ['#separator:tab', '#html:true', '#tags column:3'] and len(lines) == 6
+    f = lines[4].split('\t'); assert len(f) == 3 and 'α. Volt' in f[0].replace('"', '') and 'β. Ohm' in f[1] and f[2].split() == ['thilek', 'Κουίζ_b', 'mcq', 'ΙΕΠ_T1']
+    assert '&lt;/script&gt;' in a.text and '<b>x</b>' not in a.text and a.text.count('\t') == 6
+    assert cl.get('/quizzes/999/practice', auth=A).status_code == 404 and cl.get('/quizzes/999/anki.tsv', auth=A).status_code == 404
+    assert cl.post(f'/quizzes/{qid}/publish', data={'kind': 'practice'}, auth=A).status_code == 403 and cl.post(f'/quizzes/{qid}/publish', data={'kind': 'x'}, auth=A, headers=H).status_code == 422
+    assert cl.post(f'/quizzes/{qid}/publish', data={'kind': 'practice'}, auth=A, headers=H, follow_redirects=False).status_code == 303 and cl.post(f'/quizzes/{qid}/publish', data={'kind': 'practice'}, auth=A, headers=H, follow_redirects=False).status_code == 303
+    from app import publish; assert (publish.base() / f'quiz-{qid}-practice' / 'index.html').is_file() and [s for s, *_ in publish.listing()].count(f'quiz-{qid}-practice') == 1   # ίδια διεύθυνση σε κάθε ενημέρωση
+    q = cl.get(f'/publish/quiz-{qid}-practice/qr', auth=A); assert q.status_code == 200 and '<svg' in q.text and f'/p/quiz-{qid}-practice/' in q.text
+    q2 = cl.get(f'/publish/quiz-{qid}-practice/qr?base_url=http://10.0.0.5:8000', auth=A); assert 'http://10.0.0.5:8000/p/quiz-' in q2.text
+    assert cl.get(f'/publish/quiz-{qid}-practice/qr?base_url=javascript:alert(1)', auth=A).status_code == 422 and cl.get('/publish/nope/qr', auth=A).status_code == 404 and cl.get('/publish/..%2fx/qr', auth=A).status_code in (404, 422)
+    assert 'QR</a>' in cl.get('/publish', auth=A).text and 'εξάσκηση μαθητή' in cl.get(f'/quizzes/{qid}', auth=A).text

@@ -102,7 +102,7 @@ def listing():
 @router.get('/publish', response_class=HTMLResponse, dependencies=[Depends(auth)])
 def publish_admin(ok: int = 0):
     rows = ''.join(f"<tr><td><a href='/p/{E(s)}/'>{E(t)}</a></td><td>{E(cr)}</td><td>{E(src)}</td><td><code>/p/{E(s)}/</code></td>"
-                   f"<td><form method=post action='/publish/{E(s)}/delete' style='display:inline'><button class=danger>Κατάργηση</button></form></td></tr>" for s, t, cr, src in listing())
+                   f"<td><a href='/publish/{E(s)}/qr' target=_blank>QR</a> <form method=post action='/publish/{E(s)}/delete' style='display:inline'><button class=danger>Κατάργηση</button></form></td></tr>" for s, t, cr, src in listing())
     has = bool(get_pw_hash())
     msg = '<div class="adm adm-success"><p class=adm-t>✔ Αποθηκεύτηκε</p></div>' if ok else ''
     warn = '' if has else "<div class='adm adm-warning'><p class=adm-t>Δεν έχει οριστεί κωδικός μαθητή</p><p>Μέχρι να οριστεί, οι δημοσιευμένες σελίδες ανοίγουν μόνο με τον κωδικό διαχειριστή.</p></div>"
@@ -111,6 +111,29 @@ def publish_admin(ok: int = 0):
             f"<fieldset><legend>Κωδικός μαθητή</legend><form method=post action='/publish/password'><label class=f>Νέος κωδικός (άδειο = αφαίρεση) <input class=r-txt type=text name=pw size=24 autocomplete=off></label> <button class=primary>Αποθήκευση</button></form></fieldset>"
             f"<h3>Δημοσιευμένες σελίδες</h3><div class=scroll><table><tr><th>Τίτλος</th><th>Ημερομηνία</th><th>Πηγή</th><th>Διεύθυνση</th><th></th></tr>{rows or '<tr><td colspan=5>Καμία ακόμα.</td></tr>'}</table></div>")
     return page('Δημοσιεύσεις', body)
+
+
+BASE_RE = re.compile(r'https?://[A-Za-z0-9._\-]+(:\d{1,5})?')
+
+
+@router.get('/publish/{slug}/qr', response_class=HTMLResponse, dependencies=[Depends(auth)])
+def publish_qr(request: Request, slug: str, base_url: str = ''):
+    """QR προς τη διεύθυνση της δημοσίευσης. Η βάση (διεύθυνση του server όπως τη βλέπουν οι μαθητές) μπορεί να αλλαχτεί, π.χ. από όνομα σε IP."""
+    from . import qr
+    if not re.fullmatch(r'[a-z0-9-]{1,50}', slug) or not (base() / slug).is_dir(): raise HTTPException(404)
+    b = (base_url or '').strip().rstrip('/')
+    if b and not BASE_RE.fullmatch(b): raise HTTPException(422, 'Η διεύθυνση πρέπει να έχει τη μορφή http://όνομα-ή-IP:θύρα')
+    b = b or str(request.base_url).rstrip('/'); url = f'{b}/p/{slug}/'
+    try: svg = qr.svg(url, scale=8, label=f'QR προς {url}')
+    except ValueError as e: raise HTTPException(422, str(e))
+    meta = {}
+    try: meta = json.loads((base() / slug / 'meta.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError): pass
+    css = "body{font:16px/1.5 'Segoe UI',Arial,sans-serif;text-align:center;margin:1rem}h1{font-size:1.4rem}code{font-size:1.1rem}@media print{form,.tip{display:none}}"
+    return HTMLResponse(f"<!doctype html><html lang='el'><meta charset='utf-8'><title>QR</title><style>{css}</style><body><h1>{E(meta.get('title') or slug)}</h1>{svg}<p><code>{E(url)}</code></p>"
+                        f"<p class=tip><small>Οι μαθητές χρειάζονται τον κωδικό μαθητή. Αν ο server φαίνεται στο δίκτυο με άλλη διεύθυνση, γράψ' την παρακάτω.</small></p>"
+                        f"<form method=get><input name=base_url size=34 value='{E(b, quote=True)}'> <button>Ανανέωση QR</button></form></body>",
+                        headers={'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'"})
 
 
 @router.post('/publish/password', dependencies=[Depends(auth)])
