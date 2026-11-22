@@ -282,11 +282,13 @@ def page6(c, rid, name, st):
         else: prev = '<p><small>Για αυτή τη μορφή δεν υπάρχει οπτική προεπισκόπηση· ο πίνακας από κάτω δείχνει τι θα περιέχει.</small></p>'
     bad = bool(st['target']) and abs(t - st['target']) > 1e-6
     tg_txt = f" (στόχος {M.fmt_pts(st['target'])})" if st['target'] else ''
+    from . import filelist
+    files_html = filelist.section(rid, c, es)
     rn = fld('Όνομα', f"<input class=r-txt name=rname size=30 value='{E(name)}'>")
     inner = (f"<h3>6. Έλεγχος και εξαγωγή</h3><p class='wsum{' bad' if bad else ''}'>Μορφή: <b>{E(dict(M.FORMATS)[fm])}</b> · ορατά ερωτήματα: <b>{sum(1 for e in es if e['vis'] == 'show')}</b> · <b>σύνολο μονάδων {M.fmt_pts(t)}</b>"
              f"{tg_txt}</p>"
              + (f"<div class='adm adm-warning'><p class=adm-t>Προσοχή</p><ul>{wb}</ul></div>" if warns else "<div class='adm adm-success'><p class=adm-t>✔ Κανένα πρόβλημα</p></div>")
-             + f"<table><tr><th>Θέμα</th><th>Ερώτημα</th><th>Μον.</th><th>Τύπος</th><th>Λύση</th><th>Εμφάνιση</th></tr>{rows}</table>{prev}"
+             + f"<table><tr><th>Θέμα</th><th>Ερώτημα</th><th>Μον.</th><th>Τύπος</th><th>Λύση</th><th>Εμφάνιση</th></tr>{rows}</table>{prev}{files_html}"
              + f"<div class=wnav><a class=btn href='/wizard/{rid}/5'>← Πίσω</a><button class=primary formaction='/wizard/{rid}/generate' name=how value=run>Εξαγωγή ({dict(download='λήψη', server='αποθήκευση στον server', publish='δημοσίευση').get(st['store'])})</button> <a class=btn href='/wizard'>Οι συνταγές μου</a></div>"
              f"<fieldset><legend>Όνομα συνταγής</legend>{rn}<button formaction='/wizard/{rid}/6' name=go value=rename>Μετονομασία</button></fieldset>")
     return shell(rid, name, 6, inner)
