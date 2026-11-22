@@ -37,6 +37,19 @@ def status_tag(st):
     cls = {'reviewed': 'manual', 'draft': 'auto', 'error': 'ai'}.get(st, 'auto')
     return f"<span class='tag {cls}'>{E({'reviewed': 'ελεγμένη', 'draft': 'πρόχειρη', 'error': 'σφάλμα'}.get(st, st))}</span>"
 
+def progress_box(c):
+    """Πρόοδος λύσεων του ενεργού μαθήματος: σύνοψη, επόμενα θέματα παρτίδας, λήψη/αποθήκευση lyseis_progress.xlsx."""
+    from . import progress
+    from .library import active_course
+    course = active_course(c) or None; qs, items = progress.collect(c, course); sm = progress.summary(qs, items); nb = progress.next_batch(items, 5)
+    nxt = ''.join(f"<tr><td>{i['rank']}</td><td><a href='/review/{E(i['item'])}'>{E(i['item'])}</a></td><td>{E(i['yli'])}</td><td>{i['done']}/{i['n']}</td><td>{E(', '.join(i['missing']))}</td><td>{E(i['hint'])}</td></tr>" for i in nb)
+    pct = round(100 * sm['done'] / sm['questions']) if sm['questions'] else 0
+    return (f"<fieldset><legend>Πρόοδος{' · ' + E(course) if course else ''}</legend><p>Ερωτήματα με λύση: <b>{sm['done']}/{sm['questions']}</b> ({pct}%) · ελεγμένες {sm['reviewed']} · πρόχειρες {sm['draft']} · "
+            f"θέματα πλήρη {sm['items_done']}/{sm['items']} · εκκρεμή θέματα {sm['pending_items']}</p>"
+            + (f"<p><small>Επόμενα για παρτίδα (πρώτα όσα έχουν ήδη ξεκινήσει):</small></p><table><tr><th>Σειρά</th><th>Θέμα</th><th>Ενότητα ΙΕΠ</th><th>Με λύση</th><th>Λείπουν</th><th>Μοντέλο</th></tr>{nxt}</table>" if nxt else '<p>Δεν υπάρχουν εκκρεμή θέματα με αρχεία πηγής.</p>')
+            + f"<form method=post action='/lyseis/progress/save' class=filters><a class=btn href='/lyseis/progress.xlsx{('?course=' + quote(course)) if course else ''}'>⬇ lyseis_progress.xlsx</a> <button>Αποθήκευση στον server</button> "
+            "<small>Το αρχείο ανεβαίνει στο Drive για το skill παρτίδας. Το «Μοντέλο» είναι ευρετική πρόταση (πρόβλημα/ανάπτυξη με σχήμα → Opus).</small></form></fieldset>")
+
 @router.get('/lyseis', response_class=HTMLResponse, dependencies=[Depends(auth)])
 def lyseis_list(msg: str = ''):
     c = db(); rows = [qsol.row_dict(r) for r in c.execute('SELECT * FROM qsolution')]
@@ -48,7 +61,8 @@ def lyseis_list(msg: str = ''):
         trs.append(f"<tr><td>{box}</td><td><a href='/review/{E(r['item_id'])}'>{E(r['item_id'])}</a></td><td><a href='{E(lysi_url(r['item_id'], r['qcode']))}'>{E(r['qcode'])}</a></td>"
                    f"<td>{E(r['fm'].get('points', ''))}</td><td>{E(r['fm'].get('qtype', ''))}</td><td>{status_tag(r['status'])}</td><td>{len([q for q in r['quiz'] if not q['err']])}</td><td>{wcell}</td><td><small>{E(r['relpath'])}</small></td></tr>")
     scan = ("<form method=post action='/lyseis/scan' class=filters><button class=primary>Σάρωση φακέλου</button> <small>Ξαναδιαβάζει τα αρχεία <code>&lt;ID&gt;.&lt;θέμα&gt;-&lt;υπ&gt;.md</code> από <code>04_TRAPEZA/orig/</code> (και <code>05_LYSEIS/</code>) χωρίς πλήρες rebuild.</small></form>")
-    body = (f"<h2>Λύσεις εκπαιδευτικού</h2>{f'<p><b>{E(msg)}</b></p>' if msg else ''}{scan}"
+    from . import progress
+    body = (f"<h2>Λύσεις εκπαιδευτικού</h2>{f'<p><b>{E(msg)}</b></p>' if msg else ''}{scan}{progress_box(c)}"
             f"<form method='post' action='/select/act'>{action_bar(c, {'type': 'lyseis'}, '/lyseis')}<p>{len(rows)} αρχεία λύσεων</p>"
             "<table><tr><th><input type=checkbox data-all='qids' title='όλα'></th><th>Θέμα</th><th>Ερώτημα</th><th>Μον.</th><th>Τύπος</th><th>Status</th><th>Quiz</th><th>Προειδοποιήσεις</th><th>Αρχείο</th></tr>"
             f"{''.join(trs)}</table></form>" + ('' if rows else "<p><i>Δεν βρέθηκαν λύσεις. Βάλε τα αρχεία .md στο <code>&lt;ΜΑΘΗΜΑ&gt;/04_TRAPEZA/orig/</code> και πάτα «Σάρωση φακέλου».</i></p>"))
