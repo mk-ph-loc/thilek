@@ -73,7 +73,7 @@ def section(rid, c, es):
     return (f"<h3>Αρχεία που χρησιμοποιήθηκαν ή σχετίζονται</h3><p><small>{len(have)} αρχεία ({human(tot)})" + (f" · {miss} λείπουν" if miss else '') + ". Το βιβλίο δεν είναι προεπιλεγμένο (είναι μεγάλο)."
             "</small></p><table><tr><th><input type=checkbox data-all='f' title='όλα'></th><th>Αρχείο</th><th>Είδος</th><th>Ρόλος</th><th>Διαδρομή</th><th>Μέγεθος</th><th></th></tr>" + ''.join(rows) + "</table>"
             f"<p><button formaction='/wizard/{rid}/files/zip'>⬇ Λήψη επιλεγμένων (zip)</button> <button formaction='/wizard/{rid}/files/merge'>⬇ Συγχώνευση επιλεγμένων PDF</button> "
-            "<small>επιλεγμένα: <span id=count>{pre}</span></small></p>")
+            f"<small>επιλεγμένα: <span id=count>{pre}</span></small></p>")
 
 
 def _selected(c, rid, keys):

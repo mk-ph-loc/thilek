@@ -87,3 +87,7 @@ def test_no_files_message(cl):
     seed(); rid = new(cl); post(cl, rid, 1, action='add', qids=['2']); post(cl, rid, 4, format='excel', go='next')
     c = sqlite3.connect(os.environ['THILEK_DB']); c.execute("UPDATE item SET statement_path=NULL, solution_path=NULL"); c.execute("UPDATE book SET relpath=NULL"); c.commit(); c.close()
     assert 'Δεν βρέθηκαν αρχεία' in cl.get(f'/wizard/{rid}/6', auth=A).text
+
+
+def test_initial_selected_counter(cl):
+    rid = setup(cl); h, ks = keys(cl, rid); assert '<span id=count>4</span>' in h      # 4 προεπιλεγμένα (χωρίς το βιβλίο)
