@@ -57,3 +57,7 @@
     if (a) location.href = a.href;
   });
 })();
+
+// Επιβεβαίωση διαγραφής και κουμπί «Πίσω» χωρίς inline JS (η CSP μπλοκάρει javascript: και onsubmit).
+document.addEventListener('submit', function (e) { var m = e.target.getAttribute && e.target.getAttribute('data-confirm'); if (m && !window.confirm(m)) e.preventDefault(); }, true);
+document.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('[data-back]'); if (!a) return; if (history.length > 1) { e.preventDefault(); history.back(); } });

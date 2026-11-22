@@ -408,3 +408,14 @@ def test_examvar_unit():
 def test_tables_js_served_and_included(client):
     r = client.get('/static/tables.js', auth=A); assert r.status_code == 200 and 'javascript' in r.headers['content-type'] and 'thilek-colw' in r.text and 'localStorage' in r.text and 'innerHTML' not in r.text
     assert "/static/tables.js" in client.get('/review', auth=A).text and "/static/tables.js" in client.get('/quizzes', auth=A).text
+
+
+def test_no_inline_js_handlers_blocked_by_csp(client, tmp_path):
+    """Η CSP (default-src 'self') μπλοκάρει javascript: και onsubmit/onclick: τα κουμπιά Πίσω/επιβεβαίωση πρέπει να δουλεύουν με data-* και static JS."""
+    H = _exam_setup(client, tmp_path)
+    ex = client.get('/exams/1', auth=A).text; assert "data-confirm='Διαγραφή διαγωνίσματος;'" in ex and 'onsubmit' not in ex
+    js = client.get('/static/app.js', auth=A).text; assert "data-confirm" in js and "data-back" in js
+    r = client.post('/fileops/preview', data={'tab': 'merge', 'dir': 'C', 'src': ['C/a.pdf'], 'outname': 'm.pdf'}, auth=A, headers=H)
+    assert 'javascript:' not in r.text and "data-back" in r.text and "href='/fileops?tab=merge&dir=C'" in r.text
+    d = client.get('/fb/rename?p=C/a.pdf', auth=A)
+    assert 'javascript:' not in d.text

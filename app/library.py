@@ -207,7 +207,7 @@ def coverage_page(request: Request, upto: str = '', frm: str = '', mode: str = '
 def tags_page():
     c = db()
     rows = c.execute('SELECT tag,count(*) n,count(DISTINCT item_id) ni FROM question_tag GROUP BY tag ORDER BY tag').fetchall()
-    trs = ''.join(f"<tr><td><a href='/browse?{urlencode({'tag': r['tag']})}'>{html.escape(r['tag'])}</a></td><td>{r['n']}</td><td>{r['ni']}</td><td><form method='post' action='/tags/delete' onsubmit=\"return confirm('Διαγραφή ετικέτας από όλα;')\"><input type=hidden name=tag value='{html.escape(r['tag'])}'><button>✖ διαγραφή</button></form></td></tr>" for r in rows)
+    trs = ''.join(f"<tr><td><a href='/browse?{urlencode({'tag': r['tag']})}'>{html.escape(r['tag'])}</a></td><td>{r['n']}</td><td>{r['ni']}</td><td><form method='post' action='/tags/delete' data-confirm='Διαγραφή ετικέτας από όλα;'><input type=hidden name=tag value='{html.escape(r['tag'])}'><button>✖ διαγραφή</button></form></td></tr>" for r in rows)
     return page('Ετικέτες', f"<h2>Ετικέτες</h2><p>Βάζεις ετικέτες από τη σελίδα <a href='/browse'>Ερωτήματα</a> (επιλογή + «Ετικέτα») ή από τη σελίδα ελέγχου κάθε θέματος. Η αναζήτηση με λέξεις-κλειδιά βρίσκει ερωτήματα για μαζική ετικέτα.</p><table><tr><th>Ετικέτα</th><th>Ερωτήματα</th><th>Θέματα</th><th></th></tr>{trs}</table>")
 
 @router.post('/tags/delete', dependencies=[Depends(auth)])

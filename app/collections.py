@@ -123,7 +123,7 @@ def collection_page(cid: int, msg: str = ''):
 <a href='/collections/{cid}/doc' target=_blank>Προβολή/εκτύπωση εγγράφου</a>
 <form method='post' action='/docs/from' style='display:inline'><input type=hidden name=kind value=collection><input type=hidden name=ref value={cid}><select name=mode><option value=image>εικόνες</option><option value=text>κείμενο</option><option value=both>και τα δύο</option></select> <button>Μετατροπή σε Markdown</button></form>
 <form method='post' action='/collections/{cid}/savefile' style='display:inline'><button>Αποθήκευση εγγράφου ως αρχείο στον server (07_EXAGOGES)</button></form>
-<form method='post' action='/collections/{cid}/delete' style='display:inline' onsubmit="return confirm('Διαγραφή συλλογής;')"><button>Διαγραφή</button></form>
+<form method='post' action='/collections/{cid}/delete' style='display:inline' data-confirm='Διαγραφή συλλογής;'><button>Διαγραφή</button></form>
 <details open><summary>Ρυθμίσεις και κριτήρια</summary><pre>{cfg}</pre></details>
 <form method='post' action='/select/act'>{action_bar(c, crit, f'/collections/{cid}')}<h3>Μέλη ({len(rows)} ερωτήματα)</h3>{qtable(rows, True)}</form>"""
     return page(f'Συλλογή {cid}', body)

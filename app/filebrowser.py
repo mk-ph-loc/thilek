@@ -28,7 +28,7 @@ def deny(title, reasons, status=403):
     """Σελίδα άρνησης με αναλυτική εξήγηση (τίποτα δεν έχει αλλάξει)."""
     li = ''.join(f'<li>{r}</li>' for r in reasons)
     body = (f"<h2>⛔ {E(title)}</h2><div class='note bad'><b>Δεν έγινε καμία αλλαγή.</b> Το σύστημα σταμάτησε την ενέργεια για τους παρακάτω λόγους:<ul>{li}</ul></div>"
-            "<p><a class=btn href='javascript:history.back()'>← Πίσω</a></p>")
+            "<p><a class=btn href='/fb' data-back>← Πίσω</a></p>")
     r = page(title, body); r.status_code = status; return r
 
 class Refuse(Exception):
@@ -319,7 +319,7 @@ def fb_rename_form(p: str):
     if lv == 'block': raise Refuse('Η μετονομασία δεν επιτρέπεται', why)
     note = (f"<div class='note warn'>{'<br>'.join(why)}</div>" if why else '')
     body = (CSS + f"<h2>Μετονομασία</h2><p class=fbpath>{E(ap)}</p>{note}<form method=post action='/fb/rename' class=filters><input type=hidden name=p value='{E(rel)}'>" + fld('Νέο όνομα', f"<input name=name value='{E(name)}' size=40 required>")
-            + (("<label class='f chk'><input type=checkbox name=confirm value=1> καταλαβαίνω τον κίνδυνο</label>") if lv == 'warn' else '') + "<button class=primary>Μετονομασία</button> <a class=btn href='javascript:history.back()'>Άκυρο</a></form>")
+            + (("<label class='f chk'><input type=checkbox name=confirm value=1> καταλαβαίνω τον κίνδυνο</label>") if lv == 'warn' else '') + "<button class=primary>Μετονομασία</button> <a class=btn href='/fb' data-back>Άκυρο</a></form>")
     return page('Μετονομασία', body)
 
 @router.post('/fb/rename', dependencies=[Depends(auth)])

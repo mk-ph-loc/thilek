@@ -2,6 +2,7 @@
 Αρχές: (1) πάντα προεπισκόπηση (dry-run) πριν την εφαρμογή· ο server ξαναϋπολογίζει το σχέδιο στην εφαρμογή (δεν εμπιστεύεται τη σελίδα προεπισκόπησης)·
 (2) τα νέα αρχεία δεν αντικαθιστούν ποτέ υπάρχοντα· (3) τα πρωτότυπα (PDF/Word ΙΕΠ, βιβλίο κ.λπ.) διαβάζονται αλλά δεν αλλάζουν: το split/merge γράφει σε φάκελο `07_EXAGOGES`
 και η μετονομασία «σε αντίγραφα» αντιγράφει εκεί· η μετονομασία επί τόπου υπακούει στις προστασίες του file browser· (4) όλα μέσα στον data_root, με καταγραφή στον πίνακα `fileops`."""
+from urllib.parse import quote
 import html, os, re, shutil
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -313,7 +314,7 @@ def preview_page(f, plan):
         n_ok = sum(1 for i in plan['items'] if i['status'] == 'ok'); warn = any(i['status'] == 'warn' for i in plan['items'])
     conf = "<label class='f chk'><input type=checkbox name=confirm value=1> καταλαβαίνω τον κίνδυνο (αρχεία λύσεων/εικόνων που συνδέονται με το σύστημα)</label>" if warn else ''
     go = (f"<form method=post action='/fileops/apply'>{hidden(keep)}{conf}<button class=primary>Εφαρμογή ({n_ok}{'+' if warn else ''})</button> " if n_ok or warn else "<form><p><b>Τίποτα δεν είναι έτοιμο.</b></p>")
-    back = "<a class=btn href='javascript:history.back()'>← Πίσω</a></form>"
+    back = f"<a class=btn href='/fileops?tab={quote(str(f.get('tab') or 'split'))}&dir={quote(str(f.get('dir') or ''))}' data-back>← Πίσω</a></form>"
     return page('Προεπισκόπηση αρχείων', CSS + f"<h2>Προεπισκόπηση</h2><div class='note'>Δεν έχει αλλάξει τίποτα ακόμη.</div>{tbl}{go}{back}")
 
 

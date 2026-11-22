@@ -91,7 +91,7 @@ def quiz_page(qid: int, only: str = '', msg: str = ''):
             f"<form method='post' action='/quizzes/{qid}/meta' class=filters>{meta_name}{meta_desc}<button>Αποθήκευση</button></form>"
             f"<p><a class=btn href='/quizzes/{qid}/pick'><b>+ Προσθήκη ερωτημάτων από την τράπεζα θεμάτων</b></a></p><form method='post' action='/quizzes/{qid}/additem' class=filters>{fld('Νέο χειροκίνητο στοιχείο', '<select name=kind>' + ''.join(f'<option value={a}>{b}</option>' for a, b in KINDS.items()) + '</select>')}<button>Προσθήκη</button></form>"
             f"{''.join(cards) or '<p><i>Κενό quiz. Πρόσθεσε ερωτήματα από τη σελίδα Ερωτήματα.</i></p>'}"
-            f"<form method='post' action='/quizzes/{qid}/delete' onsubmit=\"return confirm('Διαγραφή quiz;')\"><button>Διαγραφή quiz</button></form>")
+            f"<form method='post' action='/quizzes/{qid}/delete' data-confirm='Διαγραφή quiz;'><button>Διαγραφή quiz</button></form>")
     return page(f'Quiz {qid}', body)
 
 @router.post('/quizzes/{qid}/meta', dependencies=[Depends(auth)])

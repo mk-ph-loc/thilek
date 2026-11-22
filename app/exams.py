@@ -140,7 +140,7 @@ def exam_page(eid: int, msg: str = ''):
 Πλήθος ερωτημάτων <input name=n size=3> Στόχος μονάδων <input name=target size=3> <small>(ένα από τα δύο ή και τα δύο)</small> → σε <select name=grp>{gopt}</select>
 <label><input type=checkbox name=one_per_item value=1 checked> όχι δύο ερωτήματα από το ίδιο θέμα ΙΕΠ</label> Seed <input name=seed size=5> <button>Προσθήκη τυχαίων</button></form></details>
 {''.join(out)}
-<form method='post' action='/exams/{eid}/delete' onsubmit="return confirm('Διαγραφή διαγωνίσματος;')"><button>Διαγραφή διαγωνίσματος</button></form>"""
+<form method='post' action='/exams/{eid}/delete' data-confirm='Διαγραφή διαγωνίσματος;'><button>Διαγραφή διαγωνίσματος</button></form>"""
     return page(f'Διαγώνισμα {eid}', body)
 
 def redirect(eid, msg=''): return RedirectResponse(f'/exams/{eid}' + ('?' + urlencode({'msg': msg}) if msg else ''), status_code=303)
