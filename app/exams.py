@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from .main_auth import auth
 from .review import db, page, html, same_origin, TYPES, TYPE_OPTS
 from .tools_merge import safe_path
-from . import crops
+from . import crops, examvar
 
 router = APIRouter()
 LETTERS = 'ΑΒΓΔΕΖΗΘ'; MAX_GROUPS = len(LETTERS)
@@ -124,6 +124,12 @@ def exam_page(eid: int, msg: str = ''):
     f = lambda k: html.escape(e[k] or '')
     body = f"""<h2>Διαγώνισμα #{eid}: {f('title')}</h2>{f"<p><b>{html.escape(msg)}</b></p>" if msg else ''}
 <p><a href='/exams/{eid}/print' target=_blank>Εκτύπωση/προεπισκόπηση</a> · <a href='/exams/{eid}/print?teacher=1' target=_blank>με απαντήσεις και πηγές (καθηγητή)</a> · <a href='/exams/{eid}/docx'>⬇ Word</a> · <form method='post' action='/docs/from' style='display:inline'><input type=hidden name=kind value=exam><input type=hidden name=ref value={eid}><select name=mode><option value=image>εικόνες</option><option value=text>κείμενο</option><option value=both>και τα δύο</option></select> <button>Μετατροπή σε Markdown</button></form> · <a href='/browse?exam={eid}'>Προσθήκη από τα Ερωτήματα (φίλτρα)</a> · Σύνολο: <b>{total}</b> μονάδες</p>
+<details><summary>Εκδόσεις Α/Β και πίνακας προδιαγραφών</summary><form method='get' action='/exams/{eid}/print' target=_blank>
+Έκδοση <select name=v><option value=''>— χωρίς ένδειξη —</option>{''.join(f"<option value={x}>{x}</option>" for x in examvar.VERS)}</select> Seed <input name=seed size=6>
+<label><input type=checkbox name=sg value=1> ανακάτεμα και της σειράς των Θεμάτων</label> <label><input type=checkbox name=teacher value=1> με κλειδί/απαντήσεις (καθηγητή)</label>
+<button>Εκτύπωση έκδοσης</button> <button formaction='/exams/{eid}/docx' formtarget=_self>⬇ Word</button></form>
+<p><small>Η έκδοση Α είναι η σειρά που βλέπεις εδώ· οι Β–Δ ανακατεύουν τα ερωτήματα μέσα σε κάθε Θέμα. Ίδιο seed = ίδιο ανακάτεμα. Οι μονάδες και τα ερωτήματα είναι τα ίδια.</small></p>
+<h4>Πίνακας προδιαγραφών</h4>{examvar.spec_html(rows, TYPES)}<p><a href='/exams/{eid}/spec' target=_blank>Εκτυπώσιμος πίνακας</a></p></details>
 <details open><summary>Στοιχεία διαγωνίσματος</summary><form method='post' action='/exams/{eid}/meta'>
 Τίτλος <input name=title value='{f('title')}' size=36> Υπότιτλος <input name=subtitle value='{f('subtitle')}' size=30><br>
 Σχολείο <input name=school value='{f('school')}' size=30> Τάξη/τμήμα <input name=class_name value='{f('class_name')}' size=14> Ημερομηνία <input name=exam_date value='{f('exam_date')}' size=12> Διάρκεια <input name=duration value='{f('duration')}' size=10><br>
@@ -187,15 +193,23 @@ def exam_delete(eid: int, request: Request):
 PRINT_CSS = """@page{size:A4;margin:14mm}body{font:15px/1.4 'Segoe UI',Arial,sans-serif;margin:0 auto;max-width:820px;padding:0 .5rem;color:#000}
 .head{text-align:center;border-bottom:2px solid #000;margin-bottom:.8rem;padding-bottom:.4rem}.head h1{font-size:1.35rem;margin:.1rem 0}.meta{display:flex;justify-content:space-between;margin:.4rem 0}
 h2{font-size:1.1rem;margin:1.1rem 0 .3rem;border-bottom:1px solid #000}.q{display:flex;gap:.5rem;break-inside:avoid;margin:.5rem 0}.lab{font-weight:bold;min-width:2.2rem}img{max-width:100%;height:auto}
-.name{margin:.4rem 0}.src{font-size:.85em}table{border-collapse:collapse}td,th{border:1px solid #888;padding:.15rem .4rem}.pb{break-before:page}.note{font-style:italic;margin:.3rem 0}
+.name{margin:.4rem 0}.src{font-size:.85em}table{border-collapse:collapse}.spec td,.spec th{font-size:.85em}td,th{border:1px solid #888;padding:.15rem .4rem}.pb{break-before:page}.note{font-style:italic;margin:.3rem 0}
 @media screen{.tip{background:#fffbe0;padding:.3rem;border:1px solid #cc9}}@media print{.tip{display:none}}"""
 
-@router.get('/exams/{eid}/print', response_class=HTMLResponse, dependencies=[Depends(auth)])
-def exam_print(eid: int, teacher: int = 0):
+@router.get('/exams/{eid}/spec', response_class=HTMLResponse, dependencies=[Depends(auth)])
+def exam_spec(eid: int):
     c = db(); e = get_exam(c, eid); rows = exam_rows(c, eid); c.close()
+    return HTMLResponse(f"<!doctype html><html lang='el'><meta charset='utf-8'><title>Πίνακας προδιαγραφών</title><style>{PRINT_CSS}</style><body><h1>Πίνακας προδιαγραφών</h1><p>{html.escape(e['title'])} · {html.escape(e['class_name'] or '')}</p>{examvar.spec_html(rows, TYPES)}</body>",
+                        headers={'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'"})
+
+
+@router.get('/exams/{eid}/print', response_class=HTMLResponse, dependencies=[Depends(auth)])
+def exam_print(eid: int, teacher: int = 0, v: str = '', seed: str = '', sg: int = 0):
+    c = db(); e = get_exam(c, eid); base = exam_rows(c, eid); c.close()
+    ver = examvar.clean_ver(v); seed = examvar.clean_seed(seed); rows = examvar.variant(base, eid, ver, seed, bool(sg)) if ver else [dict(r) for r in base]
     total = sum(r['points'] or 0 for r in rows); h = lambda k: html.escape(e[k] or '')
     school_html = f"<div>{h('school')}</div>" if e['school'] else ''; sub_html = f"<div>{h('subtitle')}</div>" if e['subtitle'] else ''
-    out = [f"<div class=tip>Εκτύπωση: Ctrl+P → «Αποθήκευση ως PDF» ή εκτυπωτής. Περιθώρια: προεπιλογή.</div><div class=head>{school_html}<h1>{h('title')}</h1>{sub_html}"
+    out = [f"<div class=tip>Εκτύπωση: Ctrl+P → «Αποθήκευση ως PDF» ή εκτυπωτής. Περιθώρια: προεπιλογή.</div><div class=head>{school_html}<h1>{h('title')}</h1>{sub_html}{f'<div><b>ΕΚΔΟΣΗ {ver}</b></div>' if ver else ''}"
            f"<div class=meta><span>Τάξη: {h('class_name')}</span><span>Ημερομηνία: {h('exam_date')}</span><span>Διάρκεια: {h('duration')}</span><span>Σύνολο: {total} μονάδες</span></div></div><div class=name>Ονοματεπώνυμο: ______________________________ Βαθμός: ________</div>"]
     if e['notes']: out.append(f"<div class=note>{h('notes')}</div>")
     groups = {}
@@ -207,6 +221,8 @@ def exam_print(eid: int, teacher: int = 0):
             out.append(f"<div class=q><span class=lab>{LETTERS[g - 1]}{k}.</span><div>{img}</div></div>")
     if teacher:
         out.append("<div class=pb></div><h2>Απαντήσεις και πηγές (μόνο για τον καθηγητή)</h2>")
+        if ver and ver != 'Α': out.append(f"<h3>Αντιστοίχιση με την έκδοση Α</h3>{examvar.key_html(rows)}")
+        out.append(f"<h3>Πίνακας προδιαγραφών</h3>{examvar.spec_html(rows, TYPES)}")
         for g in sorted(groups):
             for k, r in enumerate(groups[g], 1):
                 sol = f"<img src='/crop/{r['qid']}.jpg?sol=1' style='width:{crops.width_pt(r['sol_geo']):.0f}pt'>" if r['qid'] and r['sol_geo'] else (f"<a href='/files/{html.escape(r['solution_path'])}' target=_blank>λύση (PDF)</a>" if r['solution_path'] else '<i>χωρίς λύση</i>')

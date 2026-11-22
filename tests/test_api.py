@@ -372,3 +372,34 @@ def test_footer_version_and_manual(client):
     h, toc = render('## Α β\n\ntext\n\n## Α β\n\n<script>x</script>'); assert toc[0][0] != toc[1][0] and '<script>' not in h
     for need in ('/search', '/browse', '/tools/merge', '/quizzes', '/docs', '/exams', '/coverage', '/tags', '/saved', '/tools/html'):
         assert need in raw.text, need
+
+
+def test_exam_variants_and_spec(client, tmp_path):
+    from app import examvar
+    H = _exam_setup(client, tmp_path)
+    import sqlite3, os
+    c = sqlite3.connect(os.environ['THILEK_DB']); geo = c.execute('SELECT geo FROM question WHERE id=2').fetchone()[0]
+    for i in range(3, 7): c.execute("INSERT INTO question(id,item_id,code,points,text,qtype,geo) VALUES(?,?,?,?,?,?,?)", (i, '2', f'2.{i}', 5, 'q', 'true_false' if i % 2 else 'mcq', geo))
+    c.commit(); c.close()
+    client.post('/exams/1/add', data={'qids': ['1', '2', '3', '4', '5', '6'], 'grp': '1'}, auth=A, headers=H)
+    def order(url):
+        t = client.get(url, auth=A).text; import re; return re.findall(r"/crop/(\d+)\.jpg", t)
+    a = order('/exams/1/print'); assert order('/exams/1/print?v=A') == a and len(a) == 6
+    b = order('/exams/1/print?v=B&seed=7'); assert sorted(b) == sorted(a) and b != a and order('/exams/1/print?v=B&seed=7') == b          # ίδιο seed = ίδιο ανακάτεμα
+    assert order('/exams/1/print?v=b&seed=7') == b and 'ΕΚΔΟΣΗ Β' in client.get('/exams/1/print?v=B&seed=7', auth=A).text and 'ΕΚΔΟΣΗ' not in client.get('/exams/1/print', auth=A).text
+    assert order('/exams/1/print?v=B&seed=8') != b or order('/exams/1/print?v=C&seed=7') != b                                                   # άλλο seed/έκδοση: τυπικά άλλη σειρά
+    t = client.get('/exams/1/print?v=B&seed=7&teacher=1', auth=A).text; assert 'Αντιστοίχιση με την έκδοση Α' in t and 'Πίνακας προδιαγραφών' in t
+    assert 'ΕΚΔΟΣΗ' not in client.get('/exams/1/print?v=Z', auth=A).text and client.get('/exams/1/print?v=B&seed=<script>', auth=A).status_code == 200 and '<script>' not in client.get('/exams/1/print?v=B&seed=<script>', auth=A).text
+    d = client.get('/exams/1/docx?v=B&seed=7', auth=A); assert d.status_code == 200 and 'thilek-exam-1-B.docx' in d.headers['content-disposition'] and d.content[:2] == b'PK'
+    s = client.get('/exams/1/spec', auth=A); assert s.status_code == 200 and 'Πολλαπλής επιλογής' in s.text and 'Σωστό/Λάθος' in s.text and '4.1 y' in s.text and '45 μον.' in s.text
+    assert 'Εκδόσεις Α/Β' in client.get('/exams/1', auth=A).text
+
+
+def test_examvar_unit():
+    from app import examvar as X
+    rows = [{'grp': g, 'pos': k, 'item_id': str(g), 'qcode': str(k), 'points': 5, 'qtype': 'mcq', 'iep_yli': '1.1'} for g in (1, 2) for k in (1, 2, 3)]
+    a = X.variant(rows, 1, 'Α'); assert [(r['grp'], r['pos']) for r in a] == [(1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (2, 3)] and a[0]['orig'] == 'Α1'
+    b = X.variant(rows, 1, 'Β', '3', True); assert len(b) == 6 and {r['orig'] for r in b} == {'Α1', 'Α2', 'Α3', 'Β1', 'Β2', 'Β3'} and [(r['item_id'], r['qcode']) for r in b] != [(r['item_id'], r['qcode']) for r in a]
+    assert {r['grp'] for r in b} == {1, 2} and [r['pos'] for r in b if r['grp'] == 1] == [1, 2, 3]
+    assert X.variant([], 1, 'Β') == [] and X.variant(rows[:1], 1, 'Β')[0]['orig'] == 'Α1' and X.clean_ver('c') == 'Γ' and X.clean_ver('x') == '' and X.clean_seed('a<b>9') == 'ab9'
+    assert 'Σύνολο' in X.spec_html(rows, {'mcq': 'ΠΕ'}) and '30 μον.' in X.spec_html(rows, {'mcq': 'ΠΕ'}) and 'κενό' in X.spec_html([], {})

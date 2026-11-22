@@ -10,7 +10,7 @@ from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 from .main_auth import auth
 from .review import db, page, html, same_origin, fld
-from . import config, crops, mdgen
+from . import examvar, config, crops, mdgen
 from .mdmath import protect, restore, math_to_text, PH
 from . import omml
 from .solstyle import STYLES
@@ -329,11 +329,11 @@ def doc_docx(did: int):
     return Response(data, media_type=DOCX, headers={'Content-Disposition': f'attachment; filename="thilek-doc-{did}.docx"'})
 
 @router.get('/exams/{eid}/docx', dependencies=[Depends(auth)])
-def exam_docx(eid: int):
+def exam_docx(eid: int, v: str = '', seed: str = '', sg: int = 0):
     c = db()
     if not c.execute('SELECT 1 FROM exam WHERE id=?', (eid,)).fetchone(): c.close(); raise HTTPException(404)
-    data = md_to_docx(c, mdgen.exam_md(c, eid, 'image')); c.close()
-    return Response(data, media_type=DOCX, headers={'Content-Disposition': f'attachment; filename="thilek-exam-{eid}.docx"'})
+    data = md_to_docx(c, mdgen.exam_md(c, eid, 'image', v, seed, bool(sg))); c.close(); ver = {'Α': 'A', 'Β': 'B', 'Γ': 'C', 'Δ': 'D'}.get(examvar.clean_ver(v), '')
+    return Response(data, media_type=DOCX, headers={'Content-Disposition': f'attachment; filename="thilek-exam-{eid}{"-" + ver if ver else ""}.docx"'})
 
 @router.get('/quizzes/{qid}/docx', dependencies=[Depends(auth)])
 def quiz_docx(qid: int, key: int = 1):

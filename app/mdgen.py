@@ -2,6 +2,7 @@
 import json, re
 from .quizgen import LET, CODE, clean
 from .exams import LETTERS, exam_rows
+from . import examvar
 
 PARA = re.compile(r'^(στ|[α-ηθ])[.)]\s|^\d+[.)]\s')
 
@@ -24,15 +25,16 @@ def q_block(q, label, mode):
     if mode in ('text', 'both') or not q['geo']: parts.append(text_to_md(CODE.sub('', q['text'] or '', count=1)))
     return f"**{label}**\n\n" + '\n\n'.join(p for p in parts if p)
 
-def exam_md(c, eid, mode='image'):
+def exam_md(c, eid, mode='image', ver='', seed='', sg=False):
     e = c.execute('SELECT * FROM exam WHERE id=?', (eid,)).fetchone()
-    rows = exam_rows(c, eid)
+    rows = exam_rows(c, eid); ver = examvar.clean_ver(ver)
+    if ver: rows = examvar.variant(rows, eid, ver, seed, sg)
     qs = {}
     for r in rows:
         x = c.execute('SELECT id qid,text,geo FROM question WHERE item_id=? AND code=?', (r['item_id'], r['qcode'])).fetchone()
         qs[(r['item_id'], r['qcode'])] = dict(x) if x else {'qid': 0, 'text': '', 'geo': None}
     total = sum(r['points'] or 0 for r in rows)
-    out = [f"# {e['title']}"]
+    out = [f"# {e['title']}" + (f' — ΕΚΔΟΣΗ {ver}' if ver else '')]
     if e['school']: out.append(e['school'])
     if e['subtitle']: out.append(e['subtitle'])
     out.append(f"Τάξη: {e['class_name'] or ''} · Ημερομηνία: {e['exam_date'] or ''} · Διάρκεια: {e['duration'] or ''} · Σύνολο: {total} μονάδες")
